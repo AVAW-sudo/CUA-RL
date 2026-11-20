@@ -49,6 +49,7 @@ def main():
     parser.add_argument('--rounds', type=int, default=5)
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--base-image', type=Path)
+    parser.add_argument('--report', type=Path, help='Separate report path so prior acceptance evidence is retained')
     args = parser.parse_args()
     cfg = json.loads((ROOT / 'configs/paths.json').read_text())
     host = socket.gethostname()
@@ -58,11 +59,13 @@ def main():
         parser.error('Use distinct increasing stages from 1 through 16')
     if not 1 <= args.rounds <= 100 or not 30 <= args.timeout <= 600:
         parser.error('rounds must be 1..100; timeout must be 30..600 seconds')
-    report_path = ROOT / 'reports' / f'{args.accelerator}-concurrency-{host.removeprefix("research-a-")}.json'
+    report_path = args.report or ROOT / 'reports' / f'{args.accelerator}-concurrency-{host.removeprefix("research-a-")}.json'
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     report = {'hostname': host, 'checked_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'status': 'running', 'accelerator': args.accelerator, 'stages': [],
               'requested_concurrencies': args.stages, 'vcpus_per_vm': args.cpus,
               'memory_mb_per_vm': args.memory_mb,
+              'base_image': str((args.base_image or ROOT / 'data/osworld-vm/Ubuntu.qcow2').resolve()),
               'scope': 'VM startup and guest API acceptance, not sustained rollout throughput or benchmark score'}
     def save():
         report_path.write_text(json.dumps(report, indent=2) + '\n')

@@ -4,9 +4,10 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from evaluate_sft import summarize
-from run_benchmark import aggregate, needs_run, official_tasks, select_queue, fingerprint
+from run_benchmark import ROOT, aggregate, needs_run, official_tasks, select_queue, fingerprint, check_concurrency
 
 
 class AccountingTests(unittest.TestCase):
@@ -78,6 +79,28 @@ class AccountingTests(unittest.TestCase):
             (root / 'old.py').unlink()
             with self.assertRaises(FileNotFoundError):
                 fingerprint(root, pinned)
+
+    def test_higher_concurrency_requires_matching_acceptance(self):
+        self.assertIsNone(check_concurrency(4, 4, 8192, 'scienceboard'))
+        with self.assertRaises(ValueError):
+            check_concurrency(8, 4, 8192, 'scienceboard')
+        report = {'status': 'passed', 'hostname': 'test-worker', 'accelerator': 'tcg',
+                  'vcpus_per_vm': 4, 'memory_mb_per_vm': 8192,
+                  'base_image': str(ROOT / 'data/scienceboard-vm/Ubuntu2_scienceboard.qcow2'),
+                  'stages': [{'concurrency': 8, 'passed': True, 'cleanup_passed': True}]}
+        with tempfile.TemporaryDirectory() as tmp, patch('run_benchmark.socket.gethostname', return_value='test-worker'):
+            path = Path(tmp) / 'acceptance.json'
+            path.write_text(json.dumps(report))
+            self.assertEqual(check_concurrency(8, 4, 8192, 'scienceboard', path)['report'], report)
+            for workers, cpus, memory, benchmark in [(9, 4, 8192, 'scienceboard'),
+                    (8, 2, 8192, 'scienceboard'), (8, 4, 4096, 'scienceboard'), (8, 4, 8192, 'osworld')]:
+                with self.subTest(workers=workers, cpus=cpus, memory=memory, benchmark=benchmark):
+                    with self.assertRaises(ValueError):
+                        check_concurrency(workers, cpus, memory, benchmark, path)
+            report['stages'][0]['cleanup_passed'] = False
+            path.write_text(json.dumps(report))
+            with self.assertRaises(ValueError):
+                check_concurrency(8, 4, 8192, 'scienceboard', path)
 
 
 if __name__ == '__main__':

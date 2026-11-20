@@ -95,7 +95,7 @@ ScienceBoard 的独立 SFT 权重和 44.21 GB VM 已下载并校验，见
 | 队列 | 节点 | 任务数 | 并发 |
 | --- | --- | --- | --- |
 | `runs/benchmarks/osworld-sft__osworld361-tcg-v3` | worker-0 | 361 | 4 |
-| `runs/benchmarks/osworld-sft__scienceboard169-tcg-v5` | worker-1 | 169 | 4 |
+| `runs/benchmarks/osworld-sft__scienceboard169-tcg-v5` | worker-1 | 169 | 8（由 4 扩容） |
 
 共同使用 worker-1 GPU 0 的冻结 SFT 推理服务：上下文 65,536、20 图容量、最多 8 请求。OSWorld 显式 top-p=1；ScienceBoard 上游漏传 top-p，因此本轮通过服务默认值固定 top-p=0.5、top-k=20，并在每题 manifest 中记录。ScienceBoard 专用 SFT 已下载，但它是另外一个对照臂，尚未启动全量队列。
 
@@ -110,6 +110,12 @@ ScienceBoard v4 在 12 个有效结果后因连续异常暂停，已保留为诊
 - GrassGIS 在模型关闭 Map Display 后，`/dump` 越界返回 500。只在 VM overlay 内修复此状态序列化：工具栏 `shown=null`，因此不会满足“隐藏工具栏”的 `shown=false` 条件。窗口仍在但工具栏隐藏时沿用原判分。补丁前后 SHA256 保存在 VM 目录；只读基础镜像不变。另等待 GUI 完成初始化后再交给模型。
 
 v5 对全部 169 题使用同一修复版本重新评测，不与 v4 拼接分数。修复针对任务初始化和状态读取，没有修改模型输入指令、任务目标或 GRPO 算法。它是明确记录的本地兼容协议，不能直接声称与论文运行环境完全一致。
+
+2026-11-20 09:50 UTC，ScienceBoard v5 已从 4 扩到 8 并发，仍使用同一张 H200。8 VM 验收在约 98.64 秒全部就绪，截图与控制请求的中位耗时约 2.45 秒。迁移保留了之前 30 个有效结果，4 条在途轨迹自然结束后才更换调度器；没有重复模型采样。切换时另有 1 条 GrassGIS 评分连接异常保留待审计。OSWorld 的 PPTX 下载截断已通过读取原 episode 持久化文件并调用原 verifier 补判为 0 分；现有 359/361 个有效结果、169 个完全成功，仍有 2 题待审计。
+
+并发扩容：`check_vm_concurrency.py --report <path>` 可保存独立验收报告。超过 4 并发的队列必须通过 `--concurrency-report` 提供同一节点、VM 镜像、vCPU 和内存配置的验收记录；当前支持上限为 8。并发数、验收报告及其 SHA256 写入 `campaign.json` 的 `launch_history`，每题仍调用原队列冻结的 runtime。并发改变可能影响 GUI 时序，报告须披露切换时间，不能宣称执行条件完全相同。
+
+`resize_benchmark.py --run-dir <campaign> --workers 8 --concurrency-report <report>` 可在原节点等待已启动的题目自然完成后更换调度器，保留所有有效结果，包括零分；不重跑已评分题目。迁移记录保存为队列内的 `resize-*.json`。旧调度器不支持排空时，只临时暂停调度进程，独立评测子进程继续运行；等待超时或异常会恢复原调度器。新版调度器也支持 `SIGUSR1` 停止领取新任务并等待当前任务完成。
 
 当前结果入口为 `reports/sft-benchmark-results.json` / `.csv`，运行期间每 30 秒更新；每个队列的 `summary.json` 和 `campaign.json` 保留分应用统计、逐题状态和全部尝试。总体成功率定义为 score=1 的任务数 / 完整题数；平均分定义为 verifier score 之和 / 完整题数。未全部获得有效结果时，两项正式指标为 null，不把缺题、超时或判分传输故障静默算成 0。连续三个异常会暂停队列供检查；有效 score=0 不会被续跑机制重试。异常是否由模型关闭应用引起仍需结合轨迹审计，不能一概认定为平台故障。
 

@@ -1,5 +1,5 @@
 {
-  "status": "OSWorld-361 v3 selective recovery; ScienceBoard-169 v5 after audited initialization and state-serialization fixes. Full metrics remain unavailable.",
+  "status": "OSWorld-361 v3 has 359 valid results and 2 unresolved cases; ScienceBoard-169 v5 resized from 4 to 8 concurrent VMs after matching acceptance validation. Same frozen OSWorld SFT and evaluator runtime.",
   "priority": "SFT evaluation before further RL",
   "model_arms": [
     {
@@ -82,5 +82,16 @@
   ],
   "sampling": "one rollout per task; successful/full-credit fraction and mean score; retain full denominators and all attempts",
   "diagnostic_campaign_note": "ScienceBoard v1-v4 preserved and excluded from baseline; v4 had malformed KAlgebra setup, Lean context overwrite/empty cross-app setup, and a GRASS serializer crash when the model closed the target display. All 169 tasks restart under one v5 protocol.",
-  "runtime_snapshot": "Each campaign keeps immutable runtime scripts including scienceboard_compat.py for v5, hashes checked before each episode. Legacy campaigns retain their original file set."
+  "runtime_snapshot": "Each campaign keeps immutable runtime scripts including scienceboard_compat.py for v5, hashes checked before each episode. Legacy campaigns retain their original file set.",
+  "concurrency_update": {
+    "date": "2026-11-20",
+    "campaign": "runs/benchmarks/osworld-sft__scienceboard169-tcg-v5",
+    "workers": 8,
+    "vcpus_per_vm": 4,
+    "memory_mb_per_vm": 8192,
+    "gpu_count": 1,
+    "acceptance_report": "reports/tcg-scienceboard-8vm-worker-1-20261120.json",
+    "changes_recorded_in": "campaign.json launch_history and resize-*.json",
+    "interpretation": "Concurrency changed; GUI timing/load may differ. Original model, verifier, task list and per-VM resources retained."
+  }
 }

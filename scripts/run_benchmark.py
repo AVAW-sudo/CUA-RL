@@ -92,6 +92,29 @@ def check_endpoint(service):
         raise RuntimeError('Pinned SFT endpoint identity mismatch')
 
 
+def check_concurrency(workers, cpus, memory_mb, benchmark, report_path=None):
+    """Require a matching host/image/resource acceptance run above four VMs."""
+    if not 1 <= workers <= 8:
+        raise ValueError('Campaign concurrency must be between one and eight')
+    if workers <= 4:
+        return None
+    if report_path is None:
+        raise ValueError('More than four workers requires --concurrency-report')
+    content = Path(report_path).read_bytes()
+    report = json.loads(content)
+    image = ROOT / ('data/osworld-vm/Ubuntu.qcow2' if benchmark == 'osworld'
+                    else 'data/scienceboard-vm/Ubuntu2_scienceboard.qcow2')
+    if not (report.get('status') == 'passed' and report.get('hostname') == socket.gethostname()
+            and report.get('accelerator') == 'tcg' and report.get('vcpus_per_vm') == cpus
+            and report.get('memory_mb_per_vm') == memory_mb
+            and report.get('base_image') == str(image.resolve())
+            and any(stage.get('concurrency', 0) >= workers and stage.get('passed')
+                    and stage.get('cleanup_passed') for stage in report.get('stages', []))):
+        raise ValueError('Concurrency acceptance report does not match this host/image/resource configuration')
+    return {'source': str(Path(report_path).resolve()), 'sha256': hashlib.sha256(content).hexdigest(),
+            'report': report}
+
+
 def stop_process(process, output):
     # Each evaluation owns its process group; QEMU has its own session and is
     # cleaned separately using exact run/host/UUID identities.
@@ -159,6 +182,7 @@ def main():
     p.add_argument('--benchmark', choices=['osworld', 'scienceboard'], default='osworld')
     p.add_argument('--checkpoint', choices=['osworld-sft', 'scienceboard-sft'], default='osworld-sft')
     p.add_argument('--workers', type=int, default=4)
+    p.add_argument('--concurrency-report', type=Path, help='Matching VM acceptance report, required above four workers')
     p.add_argument('--cpus', type=int, default=4)
     p.add_argument('--memory-mb', type=int, default=8192)
     p.add_argument('--proxy-policy', choices=['upstream', 'direct'], default='upstream')
@@ -173,8 +197,11 @@ def main():
         return
     if socket.gethostname() not in {'research-a-worker-0', 'research-a-worker-1'}:
         p.error('Campaigns run only on worker-0/1')
-    if not 1 <= args.workers <= 4:
-        p.error('Initial campaign concurrency is limited to four; higher concurrency needs validation')
+    try:
+        concurrency_evidence = check_concurrency(args.workers, args.cpus, args.memory_mb,
+                                               args.benchmark, args.concurrency_report)
+    except (ValueError, OSError) as exc:
+        p.error(str(exc))
     output.mkdir(parents=True, exist_ok=True)
     if args.action == 'start':
         cmd = [sys.executable, str(Path(__file__).resolve()), 'run', *sys.argv[2:]]
@@ -252,14 +279,20 @@ def main():
     coordinator_path.write_bytes(coordinator_code)
     state.setdefault('launch_history', []).append({
         'at_utc': now(), 'pid': os.getpid(), 'retry_errors': args.retry_errors,
+        'workers': args.workers, 'concurrency_acceptance': concurrency_evidence,
         'scheduled_tasks': queue.copy(), 'coordinator_snapshot': str(coordinator_path),
         'coordinator_sha256': hashlib.sha256(coordinator_code).hexdigest()})
     stopped = [False]
+    draining = [False]
     def interrupted(signum, frame):
         stopped[0] = True
         state['pause_reason'] = f'Received signal {signum}'
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
+    def drain(signum, frame):
+        draining[0] = True
+        state['pause_reason'] = 'Draining active episodes for a coordinator handoff'
+    signal.signal(signal.SIGUSR1, drain)
     def save():
         state['updated_at_utc'] = now()
         write_json(path, state)
@@ -269,7 +302,7 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         active = {}
         while queue or active:
-            while queue and len(active) < args.workers and not stopped[0]:
+            while queue and len(active) < args.workers and not stopped[0] and not draining[0]:
                 task = queue.pop(0)
                 row = state['tasks'][task]
                 attempt = output / 'attempts' / task.replace('/', '__') / f'{len(row["attempts"]) + 1:03d}'
@@ -295,7 +328,7 @@ def main():
                 save()
             save()
     summary = aggregate(list(state['tasks'].values()))
-    state['status'] = 'complete' if summary['completed'] == summary['total'] else ('paused_for_review' if stopped[0] else 'finished_with_errors')
+    state['status'] = 'complete' if summary['completed'] == summary['total'] else ('paused_for_review' if stopped[0] or draining[0] else 'finished_with_errors')
     save()
 
 
