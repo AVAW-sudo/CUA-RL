@@ -39,6 +39,7 @@ def main():
               'runtime_status': runtime.get('status'), 'qemu': [], 'task_reset': [],
               'container_status': container.get('status'), 'office_status': office.get('status'),
               'concurrent_snapshot_acceptance': concurrent, 'applications': applications, 'watchdog': watchdog,
+              'live_supervision_recovery': read('live-supervision-recovery.json'),
               'limitations': [
                   'Infrastructure microbenchmarks and two selected scripted tasks are not full benchmark equivalence or end-to-end RL throughput.',
                   'QEMU uses byte-identical base images, 4 vCPU and 8 GiB; host caches were not cleared. Other CPU workloads were not paused.',
@@ -55,7 +56,7 @@ def main():
                   'userspace-applications-v1.json', 'userspace-applications-v2.json',
                   'snapshot-concurrency-worker-0-v1.json', 'snapshot-concurrency-worker-1-v1.json',
                   'snapshot-concurrency-worker-0-v2.json', 'snapshot-concurrency-worker-1-v2.json',
-                  'snapshot-task-reset-production-osworld.json', 'watchdog-recovery-validation.json']}
+                  'snapshot-task-reset-production-osworld.json', 'watchdog-recovery-validation.json', 'live-supervision-recovery.json']}
     rows = []
     for image in ['osworld', 'scienceboard']:
         for arm in ['shared_disk', 'local_disk']:
@@ -87,7 +88,7 @@ def main():
     report['production_runtime_changed'] = report['production_backend_selection'].get('enabled',False)
     write_json(ROOT / 'reports/environment-acceleration-report.json', report)
     body = '<h1>CUA-RL 环境加速实验</h1><p>更新时间：' + report['created_at_utc'] + '</p>'
-    body += '<p>本报告记录 CPU 侧工程实验。原版 SFT/GRPO 流程、8B 权重及正式评分口径保持不变，实验额外占用 0 张 GPU。</p>'
+    body += '<p>本报告记录 CPU 侧工程实验。8B SFT 起点、原版 GRPO 损失及官方 verifier 保持不变；小规模任务池和环境适配另行披露，实验额外占用 0 张 GPU。</p>'
     body += '<h2>原镜像：磁盘位置与完整快照</h2><p>QEMU 实验状态：' + html.escape(str(report['runtime_status'])) + '。时间单位为秒；成功/完成不包含仍在运行的轮次。</p>'
     body += table(['镜像', '磁盘', '成功/完成', '冷启动中位', '截图+控制中位', '已验证恢复数', '恢复就绪中位'], rows)
     body += '<h2>原任务 setup 与 verifier 的恢复检查</h2>'
@@ -110,7 +111,10 @@ def main():
         [c['campaign'], c['parsed_logs'], number(c['environment_action']['median_seconds']), number(c['between_action_gap']['median_seconds']),
          number(c['boot_and_setup']['median_seconds']), number(c['setup_to_first_action']['median_seconds'])] for c in profile.get('campaigns', [])])
     body += '<p>动作间隙包含推理及客户端处理；环境动作包含等待、截图和 HTTP。以上为历史有效任务统计，不是 GPU 单独耗时，也不是完整训练吞吐。</p>'
-    body += '<h2>当前判断</h2><p>近期优先验证同镜像 warm pool + 完整快照，以减少每条轨迹的重复开机。随后需要多应用、并发和原模型 rollout 对照，才能启用到正式训练。用户态容器已展示原生执行的速度潜力，继续作为独立环境研究；保留原任务全集和原 verifier 的对照，不能用筛题后的分数替代原版指标。</p>'
+    decision = ('本次 64 题原版 GRPO pilot 已选择同镜像完整快照复用；正式 SFT/训练后 benchmark 保持冻结冷启动协议。并发与选定原任务检查通过，原模型端到端吞吐仍由 pilot 实测。' if report['production_runtime_changed'] else '快照仍在验证，尚未启用到训练。')
+    body += '<h2>当前判断</h2><p>'+decision+'用户态容器继续作为独立环境研究，不能用不同任务子集或应用配置的分数替代原版指标。</p>'
+    live = report['live_supervision_recovery']
+    body += '<p>线上恢复检查：'+html.escape(str(live.get('status')))+'；分别杀掉 watchdog 和 supervisor 后，Frontier collector 启动次数：'+str(live.get('collector_launches'))+'。</p>'
     body += '<h2>边界与原始证据</h2><ul>' + ''.join('<li>' + html.escape(x) + '</li>' for x in report['limitations']) + '</ul><ul>'
     body += ''.join('<li><a href="' + html.escape(x) + '">' + html.escape(x) + '</a></li>' for x in report['sources']) + '</ul>'
     page = '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CUA-RL 环境加速实验</title><style>body{max-width:1200px;margin:40px auto;padding:0 24px;font-family:system-ui,sans-serif;line-height:1.65;color:#202b36}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #ccd5dc;padding:9px;text-align:left}th{background:#edf3f7}code{overflow-wrap:anywhere}h2{margin-top:32px}</style>' + body + '</html>'

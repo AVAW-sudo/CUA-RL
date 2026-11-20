@@ -102,7 +102,7 @@ OSWorld SFT 使用 worker-1 GPU 0–2 的 3 个副本，ScienceBoard SFT 使用 
 
 v1/v2 在尚无完成分数时因初始化检查问题停止，保留作诊断并排除出基线。OSWorld 沿用已验证的 v3；ScienceBoard 的 v3 发现 KAlgebra 初始化段错误后保留为诊断，正式 v4 改用 guest socket 表检查监听状态并等待 10 秒，避免启动时读取应用内部数据。此模式已通过 4 步 KAlgebra 单题检查。ChimeraX 的判分仍通过上游 guest 5000 端口代理访问 loopback REST 服务。每个正式队列保存独立 runtime 副本与 SHA256，后续脚本编辑不会混入正在运行的评测。
 
-2026-11-20 审计：OSWorld 首轮获得 352/361 个有效结果、168 个完全成功，9 题待处理；当前仅重试其中 7 个模型尚未采取动作的初始化/启动失败题。已有有效零分不会重跑，另 2 个执行过动作的评分异常保留待审计。完整分母上的正式指标仍未产生。
+2026-11-20 最终 SFT 队列：OSWorld 359/361 有效、169 完全成功；OSWorld SFT 在 ScienceBoard 上 163/169 有效、27 完全成功；ScienceBoard SFT 在 ScienceBoard 上 162/169 有效、17 完全成功。缺测分别为 2、6、7；精确全分母成功率保留 null，报告展示缺测上下界，不将有效零分重跑。
 
 ScienceBoard v4 在 12 个有效结果后因连续异常暂停，已保留为诊断数据并排除出基线。`scripts/scienceboard_compat.py` 修复了发布版任务接入中的以下问题：
 
@@ -144,9 +144,9 @@ python scripts/worker_exec.py worker-0 -- /aigc/aigc_research/wangjing/ENV/cua-r
 
 `configs/research-splits/` 额外提供 1,691 / 181 / 177 个任务的 train/dev/test 列表，先在全局按基础 `id` 分组，再按应用分层；同一基础任务的所有变体只落在一个集合。它用于后续独立算法开发，**未替换**官方全量复现池，也未自动写入 controller。实际启用时让各 worker 的 `examples_path` 读取 `*-examples.json`（按应用分组的映射），并更换注册任务名；`*-indices.json` 用于客户端过滤。原 loader 已验证实际加载 1,691 / 181 / 177 个任务，见 `reports/research-split-loader.json`。不能在全量复现 checkpoint 上再宣称该划分未见；严格实验需要各方法从相同 SFT 重新开始，并披露 SFT 本身的数据可见性限制。
 
-### SFT 报告与原版 RL 自动接续
+### 完整任务池的 SFT→RL 配置（保留，当前未启用）
 
-`scripts/pipeline_supervisor.py` 在 worker-1 持有独占锁运行，配置为 `configs/original-rl-pipeline.json`，状态及日志在 `runs/original-rl-pipeline/`。现有队列逐个排空后接入新协调器，保留冻结 runtime 和有效结果。监督进程定期检查队列、推理副本和阶段进程；副本按原配置最多重启 3 次，含启动宽限期。阶段异常最多自动恢复两次，错误与每次 receipt 均留档。进程消失但没有 receipt 时先保留子进程与现场，避免重复训练；这类情况仍需工程诊断。
+此节记录完整 2,049 题版本，当前自动运行的是文末的小规模 pilot。完整版本的 `scripts/pipeline_supervisor.py` 配置为 `configs/original-rl-pipeline.json`，状态及日志在 `runs/original-rl-pipeline/`。现有队列逐个排空后接入新协调器，保留冻结 runtime 和有效结果。监督进程定期检查队列、推理副本和阶段进程；副本按原配置最多重启 3 次，含启动宽限期。阶段异常最多自动恢复两次，错误与每次 receipt 均留档。阶段进程消失时保留独立命令与现场，按持久化回执恢复；仅存活子进程而缺少退出回执时不会重复启动或假定成功。
 
 运行期间持续生成 `reports/sft-evaluation-report.html` 和 `.json`。任务全部尝试且有限恢复结束后，报告成为 `final_complete` 或 `final_with_unscored_cases`：后者列出所有缺测题和全分母上下界，精确总分继续为 null。缺测不会伪造为失败，也不会无限卡住后续准备。自动队列按以下次序执行，**未启用 TA-GRPO、critic 或 GAE 改造**：
 
@@ -234,7 +234,7 @@ VM 来源：`xlangai/ubuntu_osworld` @ `a5d9c3eaae98eebf6e3a0beb84e7e47cf72ae133
 
 ## 环境加速实测（2026-11-20）
 
-按用户授权，在 worker-0 使用 CPU 做独立工程实验，额外 GPU 占用为 0；worker-1 的正式 SFT 测评和原版 GRPO 自动队列继续运行。实验没有修改正式 provider、模型、任务列表、采样参数或评分结果。汇总入口为 `reports/environment-acceleration-report.html` / `.json`，原始证据和失败尝试均保留。报告不将基础设施检查称为端到端训练加速。
+按用户授权，先在 worker-0 使用 CPU 做独立实验，再在两节点验证 16+32 路快照并发，环境实验额外 GPU 占用为 0。已完成的 SFT 结果和冻结评测协议保持不变；通过验收的快照后端仅启用于单独命名的小规模原版 GRPO pilot。汇总入口为 `reports/environment-acceleration-report.html` / `.json`，原始证据和失败尝试均保留。报告不将基础设施检查称为端到端训练加速。
 
 - **同镜像磁盘对照**：`benchmark_environment_runtime.py` 将冻结 qcow2 复制到节点本地 `/tmp`，校验双方 SHA256，各镜像交替执行 3 轮共享盘 / 本地盘冷启动。OSWorld 已测共享盘冷启动中位 109.02 秒、本地盘 95.39 秒。主机页缓存未清空，其他作业未暂停；第二个诊断 VM 和用户态桌面测试的并行负载也已记录，不能当作隔离硬件测试。
 - **完整快照**：同脚本在每个本地盘 VM 中保存 RAM、设备和磁盘状态，执行 3 次 `loadvm`，检查截图、控制、文件和鼠标状态。仅有 qcow2 overlay 不能跳过开机。`check_snapshot_task_reset.py` 进一步用原 task setup/verifier 检查冷启动与三次恢复的状态一致性；测试动作由固定脚本提供，结果不并入 SFT 分数。早期 OSWorld 脚本在终端尚未就绪时输入失败，改正等待后原 verifier 的 0→1 与恢复后归零均通过；失败记录保留。
@@ -243,7 +243,7 @@ VM 来源：`xlangai/ubuntu_osworld` @ `a5d9c3eaae98eebf6e3a0beb84e7e47cf72ae133
 
 PRoot 不提供足够的隔离来托管任意模型生成的动作；本实验仅执行可信固定脚本，未挂入宿主 home、GPU 设备或系统 D-Bus，仅映射 `/proc` 和 null/zero/random 等最小设备。当前没有可用 Docker 服务；用户命名空间能创建，但实际 tmpfs 挂载失败。原生 GNOME 路线证明用户态执行可行，仍需解决隔离、应用版本和完整任务兼容性后才能考虑正式 rollout。桌面退出时收回其进程组，并以 subreaper 回收双重 fork 的子进程，避免长时间实验积累僵尸进程。
 
-近期优先方向为**同镜像 warm pool + 完整快照**；启用到正式训练前还需多应用、并发和原模型 rollout 对照。目前没有将实验后端自动写入正式配置。假设每条轨迹节约 100 秒、48 环境持续满载，8,196 条 Frontier 预跑理论可省约 4.74 小时；这是重置开销的条件估算，不是已测端到端收益。
+本次 pilot 已选择**同镜像 warm pool + 完整快照**。修复 guest 时钟回退后，16+32 VM 各 3 轮、共 144 次恢复通过；并发恢复中位为 9.66/12.06 秒。生产适配器的 OSWorld 原任务 setup/verifier 四轮也通过。其余应用和原模型吞吐在 pilot 中继续观察；这不等同于完整 benchmark 的后端等价性证明。假设每条轨迹节约 100 秒、48 环境持续满载，8,196 条 Frontier 预跑理论可省约 4.74 小时；这是重置开销的条件估算，不是已测端到端收益。
 
 ```bash
 # 只读汇总现有证据
