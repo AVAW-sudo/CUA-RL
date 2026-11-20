@@ -1,0 +1,11 @@
+--- a/transformer_engine/pytorch/attention/dot_product_attention/backends.py
++++ b/transformer_engine/pytorch/attention/dot_product_attention/backends.py
+@@ -89,7 +89,7 @@
+ _flash_attn_varlen_fwd = None
+ _flash_attn_varlen_bwd = None
+ try:
+-    fa_utils.version = PkgVersion(get_pkg_version("flash-attn"))
++    fa_utils.version = PkgVersion(PkgVersion(get_pkg_version("flash-attn")).public)
+ except PackageNotFoundError:
+     pass  # only print warning if use_flash_attention_2 = True in get_attention_backend
+ else:

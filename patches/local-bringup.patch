@@ -1,0 +1,91 @@
+diff --git a/osworld_env/worker/src/session.py b/osworld_env/worker/src/session.py
+index 369b748..3b0a1b3 100644
+--- a/osworld_env/worker/src/session.py
++++ b/osworld_env/worker/src/session.py
+@@ -131,7 +131,7 @@ class OSWorldSession:
+                 'type': 'upload_dir',
+                 'parameters': {
+                     'dirs': [{
+-                        'local_dir': '/app/assets/FileHelper',
++                        'local_dir': os.path.join(os.environ.get('OSWORLD_HELPER_ASSETS', '/app/assets'), 'FileHelper'),
+                         'path': '~/FileHelper'
+                     }]
+                 }
+@@ -143,7 +143,7 @@ class OSWorldSession:
+                     'type': 'upload_dir',
+                     'parameters': {
+                         'dirs': [{
+-                            'local_dir': '/app/assets/MailHelper',
++                            'local_dir': os.path.join(os.environ.get('OSWORLD_HELPER_ASSETS', '/app/assets'), 'MailHelper'),
+                             'path': '~/MailHelper'
+                         }]
+                     }
+@@ -221,6 +221,9 @@ class OSWorldSession:
+         elif version == "anthropic_rl":
+             module = importlib.import_module('mm_agents.anthropic_rl.main')
+             agent_class = getattr(module, 'AnthropicRLAgent')
++        elif version == "scalecua_osworld":
++            module = importlib.import_module('mm_agents.scalecua-osworld.main')
++            agent_class = getattr(module, 'ScaleCUAOSWorldAgent')
+         elif version == 'sci_agent':
+             module = importlib.import_module('mm_agents.sci_agent.main')
+             agent_class = getattr(module, 'ScienceBoardAgent')
+@@ -355,7 +358,7 @@ class OSWorldSession:
+         # set agent tool list
+         if self.with_snapshots:
+             self.session.set_tools(self.task.snapshots.tools())
+-        if version in ("anthropic_rl", "sci_agent"):
++        if version in ("anthropic_rl", "sci_agent", "scalecua_osworld"):
+             self.session.set_tools(agent.get_tools())
+ 
+         return agent
+@@ -570,7 +573,7 @@ class OSWorldSession:
+         return self.env._get_obs()
+ 
+     def gen_func(self, messages: list):
+-        if self.agent_version in ("anthropic_rl", "sci_agent"):
++        if self.agent_version in ("anthropic_rl", "sci_agent", "scalecua_osworld"):
+             self.session.inject(messages)
+         else:
+             self.session.set_full_history(True)
+@@ -623,7 +626,7 @@ class OSWorldSession:
+             if snapshot_tool_calls == 0 or content:
+                 break
+ 
+-        if self.agent_version in ("anthropic_rl", "sci_agent"):
++        if self.agent_version in ("anthropic_rl", "sci_agent", "scalecua_osworld"):
+             return response.messages
+         else:
+             return content
+diff --git a/osworld_env/worker/src/task.py b/osworld_env/worker/src/task.py
+index 91f65e8..1597064 100644
+--- a/osworld_env/worker/src/task.py
++++ b/osworld_env/worker/src/task.py
+@@ -211,9 +211,9 @@ class OSWorldTask(Task):
+         if index is not None:
+             if isinstance(index, int) and index < len(self.data):
+                 index = self.get_indices()[index]
+-            task_data = self.data[index]
++            task_data = deepcopy(self.data[index])
+         else:
+-            task_data = task['task']
++            task_data = deepcopy(task['task'])
+ 
+         # if get_config is True, do not actually start sample and return task config
+         if task.get('get_config', False):
+diff --git a/scalecua_rl/trainer/src/agentrl/trainer/agentic/data_provider.py b/scalecua_rl/trainer/src/agentrl/trainer/agentic/data_provider.py
+index be035f5..1569338 100644
+--- a/scalecua_rl/trainer/src/agentrl/trainer/agentic/data_provider.py
++++ b/scalecua_rl/trainer/src/agentrl/trainer/agentic/data_provider.py
+@@ -72,7 +72,10 @@ def get_indices(base_url: str, task_name: str) -> list[Index]:
+ def get_agentic_datasets(names, base_url):
+     datasets = []
+     for name in names:
+-        indices = get_indices(base_url, name)
++        # The controller advertises -1 to accept custom-task requests. It is
++        # a protocol sentinel, not a dataset sample; sampling it sends an
++        # invalid nested custom_task.index=-1 to the OSWorld worker.
++        indices = [index for index in get_indices(base_url, name) if index != -1]
+         datasets.append(AgenticDataset(indices, name))
+     return datasets
+ 

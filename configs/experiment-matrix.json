@@ -1,0 +1,169 @@
+{
+  "status": "proposed; no algorithm ablations launched",
+  "initialization": "extreme1228/ScaleCUA-qwen3-vl-osworld-sft@406fe37598dc77b452bee1904c43411fbb6c5fad",
+  "gate": [
+    "Resolve or explicitly document missing anthropic_rl rollout module",
+    "Pass real GRPO update smoke",
+    "Acquire KVM-backed or remote desktop concurrency before budgeted comparisons",
+    "Measure episode duration and invalid-environment rate before setting wall-clock expectations"
+  ],
+  "reference_runs": [
+    {
+      "id": "B0",
+      "method": "SFT zero-update",
+      "benchmark": "official OSWorld test_nogdrive 361; full 369 separately"
+    },
+    {
+      "id": "B1",
+      "method": "released RL checkpoint",
+      "purpose": "same local evaluation protocol reference, not locally reproduced training"
+    },
+    {
+      "id": "B2",
+      "method": "original GRPO + Frontier + visual context segmentation",
+      "data": "all 2049 public RL tasks",
+      "frontier_initialization_episodes": 8196,
+      "config": "configs/qwen3vl-osworld-baseline-6gpu.yaml"
+    }
+  ],
+  "research_pilot": {
+    "split_manifest": "configs/research-splits/manifest.json",
+    "initialization": "fresh SFT per method and seed, never the full-pool RL checkpoint",
+    "suggested_training_task_subset": 64,
+    "selection": "predeclare deterministic seed-group stratified subset from research train, no dev/test selection",
+    "suggested_updates": 16,
+    "batch_tasks": 8,
+    "rollouts_per_task": 8,
+    "episodes_per_method_seed": 1024,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "task_sampling": "fixed shared task sequence, Frontier off for all pilot arms; reintroduce Frontier as a separate factorial experiment",
+    "limits": {
+      "environment_decisions": 50,
+      "model_image_size": [
+        1280,
+        720
+      ],
+      "temperature": 0.8
+    },
+    "run_order": [
+      "R0",
+      "R1(beta=1 regression)",
+      "R1(beta=0.9)",
+      "R2",
+      "R3 only after R2 is stable"
+    ],
+    "upstream_max_steps_for_16_updates": 17,
+    "budget_semantics": "1024 is the planned number of consumed training episodes, not total environment work. Count retries, rejected episodes and async prefetch separately; cap and report actual environment decisions and GPU-hours for comparisons."
+  },
+  "arms": [
+    {
+      "id": "R0",
+      "method": "unchanged GRPO estimator and original actor input / token loss reduction",
+      "purpose": "research-split control"
+    },
+    {
+      "id": "R1",
+      "method": "mean-normalized environment-step temporal weights applied to original group-relative advantages",
+      "beta": [
+        1.0,
+        0.95,
+        0.9
+      ],
+      "control": "same terminal reward, grouping, visual segmentation and actor prompt as R0",
+      "label": "temporal-weighting ablation inspired by TA-GRPO; not full Gamer reproduction",
+      "implementation": "Preserve rollout episode id and environment-step-to-output-token spans through visual compaction; do not weight observations or count copied context twice"
+    },
+    {
+      "id": "R2",
+      "method": "history-conditioned critic + environment-step GAE",
+      "critic_inputs": "exactly the actor-visible history up to the decision, including current screenshot; no future state",
+      "suggested_gamma": 1.0,
+      "suggested_lambda": 0.95,
+      "implementation": [
+        "Predict one scalar value before each environment decision",
+        "Train explicit value head/network with value loss and record value explained variance",
+        "Map each step advantage to that decision output tokens; observation/context tokens remain masked",
+        "Apply terminal reward once per episode, across all compaction segments",
+        "True terminal outcomes and protocol-defined failed horizons have zero bootstrap; context-only truncation may bootstrap from valid next observation when episode continues"
+      ],
+      "resource_gate": "Profile independent critic on 4 actor GPUs before choosing full tune versus LoRA; preserve that choice in all critic ablations"
+    },
+    {
+      "id": "R3",
+      "method": "critic with additional past history or recurrent memory",
+      "control": "same actor inputs as R2; compare to R2, not only critic-free GRPO",
+      "restriction": "past-only memory; no future observations, verifier labels or hidden task solution"
+    },
+    {
+      "id": "R4",
+      "method": "full TA-GRPO-style adaptation",
+      "dependencies": [
+        "explicit memory compaction stages",
+        "comparison groups sharing task and compaction stage",
+        "verifiable segment objective scores where available; otherwise sparse feedback",
+        "separate segment/step/token averaging ablation"
+      ],
+      "restriction": "Image eviction alone is not a local reward or an equivalent memory summary; do not silently reuse whole-trajectory terminal reward as newly verified per-segment progress",
+      "controls": [
+        "Memory/compaction-only GRPO baseline with identical actor prompts",
+        "Same segment grouping and loss reduction with temporal beta=1",
+        "Temporal weighting with all other segment mechanics fixed"
+      ]
+    }
+  ],
+  "reporting": {
+    "primary": [
+      "task success by task and application",
+      "success versus environment decision budget",
+      "success versus GPU-hours"
+    ],
+    "diagnostics": [
+      "group zero-variance rate",
+      "episode length",
+      "valid environment completion rate",
+      "KL",
+      "clip fraction",
+      "gradient norm",
+      "policy-version lag",
+      "critic explained variance and value loss",
+      "segment reach/survival counts"
+    ],
+    "statistics": "paired task-level comparisons; bootstrap at base-task-group level, report seeds; keep development selection separate from final test",
+    "protocol_warning": "Public RL seeds overlap official OSWorld benchmark. Research partition has seed-disjoint RL training, but SFT data exposure is not fully established."
+  },
+  "sources": {
+    "gamer_paper": "https://arxiv.org/html/2611.18397v1#S4",
+    "gamer_repository": "https://github.com/RainBowLuoCS/Gamer",
+    "checked_date": "2026-11-19",
+    "gamer_release_note": "README marks Streaming-vLLM coming soon; no released TA-GRPO training implementation confirmed in the checked repository"
+  },
+  "paper_summary": "Gamer compares segments by task and compaction stage, uses verified objective outcomes and critic-free group normalization, weights later decisions more heavily with mean-normalized beta powers, and averages losses over segments, steps, and output tokens. Its beta=0.9 is a starting point to test, not evidence of improvement on OSWorld.",
+  "implementation_observations": [
+    {
+      "finding": "Upstream flattens visual segments before compute_advantage. Each segment carries the terminal reward and the same group_id; group mean/std therefore count segment copies, not one reward per episode. The original behavior is preserved in R0.",
+      "sources": [
+        "SCALE-CUA/scalecua_rl/examples/training/async_trainer.py:630",
+        "SCALE-CUA/scalecua_rl/trainer/src/agentrl/trainer/algorithms/advantage.py:66",
+        "SCALE-CUA/scalecua_rl/trainer/src/agentrl/trainer/algorithms/core_algos.py:127"
+      ],
+      "implication": "Separate temporal-credit claims from segment-count and loss-reduction effects. Optional control: normalize once per episode uid and broadcast to its segments, changing nothing else."
+    },
+    {
+      "finding": "repeat() assigns one group_id per prompt group and one uid per rollout. TaskManager propagates those fields into every segment; retain uid for reconstructing the environment-step timeline.",
+      "sources": [
+        "SCALE-CUA/scalecua_rl/trainer/src/agentrl/trainer/utils/utils.py:194",
+        "SCALE-CUA/scalecua_rl/trainer/src/agentrl/trainer/components/task_manager.py:127"
+      ]
+    }
+  ],
+  "validation_status": {
+    "online_nonzero_gradient_smoke": "passed; reports/smoke-online-rl-signal.json",
+    "full_pool_reproduction": "not run",
+    "benchmark_evaluation": "not run",
+    "algorithm_ablations": "not implemented or run"
+  }
+}

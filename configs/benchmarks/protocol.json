@@ -1,0 +1,37 @@
+{
+  "status": "prepared, not evaluated",
+  "primary": "test_nogdrive",
+  "separate_secondary": "test_all",
+  "task_names": {
+    "test_nogdrive": "osworld-eval-361",
+    "test_all": "osworld-eval-369"
+  },
+  "worker_data_path": "/aigc/aigc_research/wangjing/CODE/CUA-RL/SCALE-CUA/osworld_eval/evaluation_examples/examples",
+  "max_environment_steps": 50,
+  "screen_size": [
+    1920,
+    1080
+  ],
+  "image_size": [
+    1280,
+    720
+  ],
+  "relative_coordinates": true,
+  "temperature": 0.8,
+  "top_p": 1.0,
+  "max_output_tokens": 4096,
+  "sampling_note": "Also explicitly set and record top_k (checkpoint default is 20), seed support, and chat/reasoning parsers when launching services; do not silently vary them across checkpoints",
+  "checkpoints": [
+    "SFT",
+    "published RL reference",
+    "local original-algorithm RL",
+    "research ablations"
+  ],
+  "report": "per-task outcome and aggregate success; retain infrastructure failures separately; use identical retry policy and VM image for all methods",
+  "examples_path": "Use the generated *-examples.json maps for workers; *-indices.json for clients",
+  "current_limitations": [
+    "No benchmark worker registered yet",
+    "TCG bring-up is not a suitable full benchmark throughput environment",
+    "Public training seed IDs overlap official benchmark; disclose protocol"
+  ]
+}

@@ -1,0 +1,126 @@
+# Local nonzero-signal smoke: four real rollouts, original 50-decision horizon, no Frontier.
+model_path: /aigc/aigc_research/wangjing/MODEL/THUDM-ScaleCUA-qwen3-vl-osworld-sft
+model_type: qwen3_vl
+max_steps: 2
+bucket_size: 2.0e9
+val_before_train: false
+is_vision_model: true
+rollout_ratio: 0.3333333333333333
+eval_only: false
+use_vllm: true
+group_name: qwen3vl-osworld-original-grpo
+run_name: local-signal-1step
+project_name: thudm-scalecua-osworld
+save_path: /aigc/aigc_research/wangjing/CODE/CUA-RL/runs/checkpoints
+save_interval: 1000000
+val_interval: 250000
+task_adv_norm: true
+train:
+  batch_size: 1
+  concurrency: 2
+  n: 4
+val:
+  concurrency: 1
+  n: 1
+use_megatron: true
+dynamic_sampling:
+  sample_type: weighted
+  initial_pass_rate_file: null
+  enabled: false
+  target_success_rate: 0.5
+  random_sample_ratio: 0.2
+  ema_alpha: 0.2
+  initial_weight: 0.0
+  sigma: 0.25
+  exploration_bonus: 0.0
+  min_initial_pass_rate: 0.0
+  max_initial_pass_rate: 1.0
+rollout:
+  worker_type: vllm_base
+  tp_size: 2
+  use_force_cancel: true
+  is_vision_model: true
+  server_args:
+    port: 8221
+    max_model_len: 40960
+    gpu_memory_utilization: 0.5
+    block_size: 256
+    reasoning_parser: deepseek_r1
+    mm_processor_cache_gb: 4
+    logprobs_mode: processed_logprobs
+    max_num_seqs: 2
+    enforce_eager: true
+  sampling_params:
+    temperature: 0.8
+    max_tokens: 4096
+actor:
+  worker_type: megatron
+  offload_model: false
+  torch_dtype: bfloat16
+  is_vision_model: true
+  freeze_vit: true
+  loss_reduce_mode: token-mean
+  max_tokens_per_micro_batch: 8000
+  max_ckpt_to_keep: 1
+  enable_gradient_checkpointing: true
+  tensor_model_parallel_size: 2
+  context_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  reshard_after_forward: true
+  use_distributed_optimizer: true
+  use_swift_model: true
+  checkpoint_contents:
+  - model
+  - optimizer
+  - extra
+  - hf_model
+  model_input_keys:
+  - input_ids
+  - position_ids
+  - pixel_values
+  - image_grid_thw
+  optim:
+    lr: 3e-6
+    weight_decay: 0
+loss:
+  temperature: 0.8
+  use_kl_loss: true
+  kl_loss_coef: 0.0001
+  clip_ratio: 0.2
+  clip_ratio_low: 0.2
+  clip_ratio_high: 0.28
+  clip_ratio_c: 3.0
+  entropy_coef: 0.0
+task:
+  tool_call_parser: hermes
+  tool_call_parser_style: vllm
+  max_retries: 1
+  images_to_keep: 5
+  min_removal_threshold: 5
+  base_url: http://127.0.0.1:18520/api
+  fallback_base_url: http://127.0.0.1:18520/api
+  use_native_coroutine: true
+  incomplete_punishment: -0.2
+  max_total_len: 30000
+  max_turns: 50
+  task_kwargs:
+    agent_version: scalecua_osworld
+    env_version: anthropic
+    max_rounds: 50
+    image_width: 1280
+    image_height: 720
+    agent_config:
+      relative_coordinate: true
+  train_tasks:
+  - osworld-local-smoke
+  val_tasks: []
+  running_mode:
+    osworld-local-smoke: custom
+  loop_start_args:
+  - name
+  - index
+advantage:
+  adv_estimator: grpo
+num_gpu_per_mach: 6
+metrics_log_dir: /aigc/aigc_research/wangjing/CODE/CUA-RL/runs/metrics/local-signal-1step
+first_step_ratio: 1.0

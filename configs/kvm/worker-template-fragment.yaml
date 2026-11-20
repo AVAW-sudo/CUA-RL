@@ -1,0 +1,16 @@
+# For the platform administrator: merge into the owning job's worker Pod template.
+# This is a fragment, NOT a complete Pod and NOT a live-Pod patch.
+# Preserve all existing CPU, memory, GPU, volumes, and placement settings.
+# Confirm this exact resource is advertised before using it. THUDM uses squat.ai/kvm.
+spec:
+  containers:
+    - name: main
+      resources:
+        requests:
+          squat.ai/kvm: "1"
+        limits:
+          squat.ai/kvm: "1"
+# The device plugin/runtime must grant /dev/kvm access to uid 1000 / gid 100.
+# A hostPath mount by itself does not grant device-cgroup access.
+# One KVM device allocation can support multiple QEMU processes; this request
+# is not a promise of a particular VM concurrency or CPU/memory reservation.

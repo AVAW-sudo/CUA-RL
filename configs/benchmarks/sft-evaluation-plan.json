@@ -1,0 +1,86 @@
+{
+  "status": "OSWorld-361 v3 selective recovery; ScienceBoard-169 v5 after audited initialization and state-serialization fixes. Full metrics remain unavailable.",
+  "priority": "SFT evaluation before further RL",
+  "model_arms": [
+    {
+      "checkpoint": "OSWorld SFT",
+      "source": {
+        "repo_id": "extreme1228/ScaleCUA-qwen3-vl-osworld-sft",
+        "revision": "406fe37598dc77b452bee1904c43411fbb6c5fad"
+      },
+      "benchmarks": [
+        "OSWorld-361",
+        "ScienceBoard-169"
+      ],
+      "interpretation": "RL initialization checkpoint; ScienceBoard is a cross-domain evaluation"
+    },
+    {
+      "checkpoint": "ScienceBoard SFT",
+      "source": {
+        "repo_id": "extreme1228/ScaleCUA-qwen3-vl-scienceboard-sft",
+        "revision": "48c39bb30e1920e02c440fc256f5bb4e1d44765b"
+      },
+      "benchmarks": [
+        "ScienceBoard-169"
+      ],
+      "interpretation": "Separate domain-specific control; never merge scores with OSWorld SFT",
+      "download_status": "downloaded and verified; reports/scienceboard-sft-model-manifest.json"
+    }
+  ],
+  "protocols": {
+    "OSWorld-361": {
+      "entrypoint": "run_scalecua_os.py",
+      "max_steps": 50,
+      "desktop": [
+        1920,
+        1080
+      ],
+      "image_size": [
+        1280,
+        720
+      ],
+      "temperature": 0.8,
+      "top_p": 1.0,
+      "max_tokens": 4096,
+      "images_to_keep": 5,
+      "min_removal_threshold": 5
+    },
+    "ScienceBoard-169": {
+      "entrypoint": "run_scalecua_sci.py",
+      "max_steps": 50,
+      "desktop": [
+        1280,
+        800
+      ],
+      "image_size": [
+        1280,
+        800
+      ],
+      "temperature": 0.4,
+      "max_tokens": 4096,
+      "images_to_keep": 10,
+      "top_p_note": "Upstream omits top_p; endpoint explicitly supplies top_p=0.5 and top_k=20 for this local protocol"
+    }
+  },
+  "blockers": [
+    "Online task reachability must be audited: direct guest Google 200, worker Wikipedia 403; no residential proxy configured",
+    "Full ScienceBoard application coverage is still being validated by the interleaved task queue"
+  ],
+  "evaluation_policy": "Pin one sample per task, preserve all denominators; record setup/API/verifier infrastructure errors separately, no success-only retries; distinguish subset smoke from full results",
+  "scienceboard_vm_status": "KAlgebra payload contract and Lean import preservation verified in the real guest; GRASS closed-display serialization validated with shown/hidden/closed states; v4 preserved as diagnostic.",
+  "environment_strategy": "Proceed independently with explicitly labelled TCG software emulation. KVM is an optional throughput upgrade requiring platform access.",
+  "tcg_validation": {
+    "worker": "worker-0",
+    "concurrency": 4,
+    "boot_and_api_check": "passed",
+    "all_ready_seconds": 199.06938711181283,
+    "scope": "Boot and guest API only; not full rollout throughput"
+  },
+  "campaigns": [
+    "runs/benchmarks/osworld-sft__osworld361-tcg-v3",
+    "runs/benchmarks/osworld-sft__scienceboard169-tcg-v5"
+  ],
+  "sampling": "one rollout per task; successful/full-credit fraction and mean score; retain full denominators and all attempts",
+  "diagnostic_campaign_note": "ScienceBoard v1-v4 preserved and excluded from baseline; v4 had malformed KAlgebra setup, Lean context overwrite/empty cross-app setup, and a GRASS serializer crash when the model closed the target display. All 169 tasks restart under one v5 protocol.",
+  "runtime_snapshot": "Each campaign keeps immutable runtime scripts including scienceboard_compat.py for v5, hashes checked before each episode. Legacy campaigns retain their original file set."
+}

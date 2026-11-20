@@ -1,0 +1,25 @@
+osworld-local-smoke:
+  module: local_osworld.LocalOSWorldTask
+  parameters:
+    name: osworld-local-smoke
+    concurrency: 2
+    max_rounds: 15
+    agent_version: scalecua_osworld
+    agent_config:
+      scalecua_osworld:
+        relative_coordinate: true
+        only_n_most_recent_images: 5
+        incremental_messages: true
+    env_version: anthropic
+    env_config:
+      anthropic:
+        type: Ubuntu-modified
+    use_proxy: false
+    images_dir: /aigc/aigc_research/wangjing/CODE/CUA-RL/data/osworld-vm
+    data_path: /aigc/aigc_research/wangjing/CODE/CUA-RL/data/ScaleCUA/osworld/rl_tasks/os
+    examples_path: /aigc/aigc_research/wangjing/CODE/CUA-RL/configs/osworld-smoke-indices.json
+    judge_functions_path: /aigc/aigc_research/wangjing/CODE/CUA-RL/data/ScaleCUA/osworld/judge_functions/rl_tasks
+    cache_dir: /aigc/aigc_research/wangjing/CODE/CUA-RL/runs/osworld-cache
+    record_dir: /aigc/aigc_research/wangjing/CODE/CUA-RL/runs/osworld-records
+    vm_cpu: 2
+    vm_ram: 4

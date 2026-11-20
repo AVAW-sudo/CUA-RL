@@ -1,0 +1,47 @@
+{
+  "upstream": {
+    "url": "https://github.com/THUDM/SCALE-CUA.git",
+    "commit": "3929e2fe364623153f2caa94ead71dc1aea50fb0",
+    "path": "SCALE-CUA"
+  },
+  "sft_model": {
+    "repo_id": "extreme1228/ScaleCUA-qwen3-vl-osworld-sft",
+    "revision": "406fe37598dc77b452bee1904c43411fbb6c5fad"
+  },
+  "released_rl_model": {
+    "repo_id": "extreme1228/ScaleCUA-qwen3-vl-osworld",
+    "revision": "d27cdab2d500f323af27c0c9fdcf123f40c83d42"
+  },
+  "training_data": {
+    "repo_id": "extreme1228/ScaleCUA",
+    "revision": "ca4266e614883a8bed5b8e9caf4f0fcbccb6a023",
+    "allow_patterns": [
+      "README.md",
+      "osworld/rl_tasks/**",
+      "osworld/judge_functions/rl_tasks/**"
+    ]
+  },
+  "smoke_vm": {
+    "repo_id": "xlangai/ubuntu_osworld",
+    "repo_type": "dataset",
+    "revision": "a5d9c3eaae98eebf6e3a0beb84e7e47cf72ae133",
+    "filename": "Ubuntu.qcow2.zip",
+    "extracted_file": "data/osworld-vm/Ubuntu.qcow2",
+    "bytes": 24460197888,
+    "scope": "Public image explicitly prescribed by pinned THUDM osworld_env/README.md; Ubuntu maps to Ubuntu-modified in the local provider"
+  },
+  "scienceboard_vm": {
+    "repo_id": "extreme1228/ScaleCUA-ScienceBoard-VM",
+    "revision": "e1cc91ae31342aea397f39e948b134701da6d541",
+    "repo_type": "dataset",
+    "filename": "Ubuntu2_scienceboard.qcow2.zip",
+    "extracted_file": "data/scienceboard-vm/Ubuntu2_scienceboard.qcow2",
+    "archive_member": "Ubuntu2.qcow2",
+    "bytes": 44212551680,
+    "name_mapping_note": "Published ZIP contains Ubuntu2.qcow2; extract its bytes unchanged to the subtype filename prescribed by THUDM"
+  },
+  "scienceboard_sft_model": {
+    "repo_id": "extreme1228/ScaleCUA-qwen3-vl-scienceboard-sft",
+    "revision": "48c39bb30e1920e02c440fc256f5bb4e1d44765b"
+  }
+}

@@ -1,0 +1,11 @@
+third_party/
+SCALE-CUA/
+data/
+runs/
+__pycache__/
+*.pyc
+.venv/
+.env
+reports/*
+!reports/.gitkeep
+archive/

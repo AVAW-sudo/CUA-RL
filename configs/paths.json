@@ -1,0 +1,24 @@
+{
+  "model_id": "extreme1228/ScaleCUA-qwen3-vl-osworld-sft",
+  "model_revision": "406fe37598dc77b452bee1904c43411fbb6c5fad",
+  "model_dir": "/aigc/aigc_research/wangjing/MODEL/THUDM-ScaleCUA-qwen3-vl-osworld-sft",
+  "policy_env": "/aigc/aigc_research/wangjing/ENV/cua-rl-policy",
+  "eval_env": "/aigc/aigc_research/wangjing/ENV/cua-rl-eval",
+  "cache_dir": "/aigc/aigc_research/wangjing/ENV/cache/cua-rl",
+  "browser_dir": "/aigc/aigc_research/wangjing/ENV/cache/cua-rl/browsers",
+  "uv": "/aigc/aigc_research/wangjing/ENV/m2-agent-qwen38/bin/uv",
+  "workers": [
+    "research-a-worker-0",
+    "research-a-worker-1"
+  ],
+  "initial_inference_worker": "research-a-worker-1",
+  "initial_inference_gpus": [
+    0
+  ],
+  "port": 18080,
+  "served_model_name": "scalecua-qwen3-vl-8b-sft",
+  "rl_env": "/aigc/aigc_research/wangjing/ENV/cua-rl-agentrl",
+  "data_dir": "/aigc/aigc_research/wangjing/CODE/CUA-RL/data/ScaleCUA",
+  "source_dir": "/aigc/aigc_research/wangjing/CODE/CUA-RL/SCALE-CUA",
+  "controller_url": null
+}
