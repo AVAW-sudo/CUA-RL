@@ -46,8 +46,8 @@ SFT 存放在 `/aigc/aigc_research/wangjing/MODEL/THUDM-ScaleCUA-qwen3-vl-osworl
 两节点各有 8×H200（每卡 143,771 MiB）、NV18 互联、约 180 核 CPU 配额和 1,800 GiB 内存配额。仅 worker-0/1 用于计算。节点内 GPU 1/2 的 NCCL 正确性检查已通过；跨节点 NCCL 尚未测。
 
 - worker-0：8 卡都有其他进程，不能启动本项目训练。
-- worker-1：GPU 0 是本项目 SFT 服务，1/2/5/6/7 空闲，3/4 有其他项目进程。这是检查时快照，每次启动需重查。
-- 六卡 RL 候选集合是 worker-1 的 `0,1,2,5,6,7`，启动前先停止自己的 SFT 服务；配置分配 2 卡 rollout、4 卡 actor/ref。actor/ref 按上游共用训练卡，正式全长 RL 的显存峰值仍需实测。
+- worker-1：按用户最新授权使用全部 8 张 H200。2026-11-20 已逐卡确认空闲后启动 8 个 TP=1 推理副本：GPU 0–2 为 OSWorld SFT，GPU 3–7 为 ScienceBoard SFT。其他项目进程未被停止。
+- 六卡 RL 配置保留原有的 2 卡 rollout、4 卡 actor/ref 分配；当前全部 GPU 用于冻结 SFT 评测，未继续训练。后续 RL 启动前重新分配自己的服务与空闲卡，正式全长训练的显存峰值仍需实测。
 - 16 卡配置只供将来两节点全部可用时使用：4 卡 rollout、12 卡 actor/ref。当前没有启动或预约这些 GPU。
 
 ## 原版 baseline 与 benchmark
@@ -95,9 +95,10 @@ ScienceBoard 的独立 SFT 权重和 44.21 GB VM 已下载并校验，见
 | 队列 | 节点 | 任务数 | 并发 |
 | --- | --- | --- | --- |
 | `runs/benchmarks/osworld-sft__osworld361-tcg-v3` | worker-0 | 361 | 4 |
-| `runs/benchmarks/osworld-sft__scienceboard169-tcg-v5` | worker-1 | 169 | 8（由 4 扩容） |
+| `runs/benchmarks/osworld-sft__scienceboard169-tcg-v5` | worker-1 | 169 | 12（由 4→8 扩容） |
+| `runs/benchmarks/scienceboard-sft__scienceboard169-tcg-v5-pool` | worker-1 | 169 | 20 |
 
-共同使用 worker-1 GPU 0 的冻结 SFT 推理服务：上下文 65,536、20 图容量、最多 8 请求。OSWorld 显式 top-p=1；ScienceBoard 上游漏传 top-p，因此本轮通过服务默认值固定 top-p=0.5、top-k=20，并在每题 manifest 中记录。ScienceBoard 专用 SFT 已下载，但它是另外一个对照臂，尚未启动全量队列。
+OSWorld SFT 使用 worker-1 GPU 0–2 的 3 个副本，ScienceBoard SFT 使用 GPU 3–7 的 5 个副本。每个副本 TP=1、上下文 65,536、20 图容量、最多 8 请求；两种 checkpoint 的分数独立报告。OSWorld 显式 top-p=1；ScienceBoard 上游漏传 top-p，因此本轮通过服务默认值固定 top-p=0.5、top-k=20，并在每题 manifest 中记录。
 
 v1/v2 在尚无完成分数时因初始化检查问题停止，保留作诊断并排除出基线。OSWorld 沿用已验证的 v3；ScienceBoard 的 v3 发现 KAlgebra 初始化段错误后保留为诊断，正式 v4 改用 guest socket 表检查监听状态并等待 10 秒，避免启动时读取应用内部数据。此模式已通过 4 步 KAlgebra 单题检查。ChimeraX 的判分仍通过上游 guest 5000 端口代理访问 loopback REST 服务。每个正式队列保存独立 runtime 副本与 SHA256，后续脚本编辑不会混入正在运行的评测。
 
@@ -113,7 +114,15 @@ v5 对全部 169 题使用同一修复版本重新评测，不与 v4 拼接分�
 
 2026-11-20 09:50 UTC，ScienceBoard v5 已从 4 扩到 8 并发，仍使用同一张 H200。8 VM 验收在约 98.64 秒全部就绪，截图与控制请求的中位耗时约 2.45 秒。迁移保留了之前 30 个有效结果，4 条在途轨迹自然结束后才更换调度器；没有重复模型采样。切换时另有 1 条 GrassGIS 评分连接异常保留待审计。OSWorld 的 PPTX 下载截断已通过读取原 episode 持久化文件并调用原 verifier 补判为 0 分；现有 359/361 个有效结果、169 个完全成功，仍有 2 题待审计。
 
-并发扩容：`check_vm_concurrency.py --report <path>` 可保存独立验收报告。超过 4 并发的队列必须通过 `--concurrency-report` 提供同一节点、VM 镜像、vCPU 和内存配置的验收记录；当前支持上限为 8。并发数、验收报告及其 SHA256 写入 `campaign.json` 的 `launch_history`，每题仍调用原队列冻结的 runtime。并发改变可能影响 GUI 时序，报告须披露切换时间，不能宣称执行条件完全相同。
+2026-11-20 10:29 UTC，8 个推理副本就绪，两组 ScienceBoard 队列分别启动 12 / 20 并发。首次 32 和 24 VM 同时启动各有一个启动超时；保留失败报告后，改为间隔 1 秒启动，32 个 VM 在约 153.53 秒全部就绪，三轮并发截图/控制检查中位 2.49 秒、最大 3.36 秒，清理全部成功，见 `reports/tcg-scienceboard-32vm-paced-worker-1-20261120.json`。这是启动及 API 验收，持续 rollout 吞吐仍需单独测量，不能据此宣称黑屏启动问题已根治。OSWorld-SFT 队列排空后保留 55 个有效结果，并完成下面说明的路由迁移；原有 2 个异常未重试。ScienceBoard-SFT 队列独立从完整 169 题开始。
+
+并发扩容：`check_vm_concurrency.py --report <path>` 可保存独立验收报告。超过 4 并发的队列必须通过 `--concurrency-report` 提供同一节点、VM 镜像、vCPU 和内存配置的验收记录；调度器支持上限为 32，但实际启动仍必须通过对应并发验收。并发数、验收报告及其 SHA256 写入 `campaign.json` 的 `launch_history`，每题仍调用原队列冻结的 runtime。并发改变可能影响 GUI 时序，报告须披露切换时间，不能宣称执行条件完全相同。
+
+推理副本通过 `serve_model.py --replica r1 --port 18082 ...` 单独管理状态和日志。池文件格式为 `{"checkpoint":"osworld-sft","service_states":["/absolute/path/to/service-state.json", "..."]}`，交给 `run_benchmark.py --service-pool <pool.json>`。同池必须保持 checkpoint revision、权重目录、服务配置和兼容适配器一致；启动命令仅允许端口不同。每题记录选用副本及其状态文件 SHA256，服务状态在每次协调器启动时冻结。
+
+旧队列先用 `SIGUSR1` 等待所有在途题目自然完成，然后以 `--resume --service-pool <pool.json> --upgrade-service-routing` 迁移。迁移前验证原 runtime 哈希；仅允许给评测 launcher 增加服务选择及来源记录，provider、QEMU 和 ScienceBoard 兼容层必须逐字节一致。旧 runtime、全部已评分题目和尝试历史保留；模型指令、采样参数和 verifier 不变。此项显式迁移不能用于夹带评测逻辑修改。
+
+ScienceBoard SFT 发布文件把 `extra_special_tokens` 存为列表，而当前推理环境的 Transformers 4.x 要求该字段为命名 token 字典。`scripts/scienceboard_tokenizer_compat/sitecustomize.py` 仅在该 checkpoint 的推理进程内把列表映射到 `additional_special_tokens`；不修改权重、checkpoint 文件或 token ID。真实 tokenizer/processor 检查确认全部 13 个特殊 token ID 及中英文和图像标记编码与原始 tokenizer.json 一致，真实图片 API 请求通过。证据见 `reports/scienceboard-sft-tokenizer-compat.json` 和 `reports/scienceboard-sft-multimodal-smoke.json`，后者不计入 benchmark。
 
 `resize_benchmark.py --run-dir <campaign> --workers 8 --concurrency-report <report>` 可在原节点等待已启动的题目自然完成后更换调度器，保留所有有效结果，包括零分；不重跑已评分题目。迁移记录保存为队列内的 `resize-*.json`。旧调度器不支持排空时，只临时暂停调度进程，独立评测子进程继续运行；等待超时或异常会恢复原调度器。新版调度器也支持 `SIGUSR1` 停止领取新任务并等待当前任务完成。
 

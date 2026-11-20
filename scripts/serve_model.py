@@ -2,9 +2,11 @@
 """Start or stop this project's single-worker SFT inference service."""
 import argparse
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import socket
 import subprocess
@@ -18,6 +20,8 @@ def main():
     parser.add_argument("action", choices=["start", "stop"])
     parser.add_argument("--gpus", default="0")
     parser.add_argument('--checkpoint', choices=['osworld-sft', 'scienceboard-sft'], default='osworld-sft')
+    parser.add_argument('--replica', help='Independent replica name; keeps the primary service state intact')
+    parser.add_argument('--port', type=int, help='Explicit port for an independent replica')
     parser.add_argument('--max-model-len', type=int, default=40960)
     parser.add_argument('--max-images', type=int, default=10)
     parser.add_argument('--max-num-seqs', type=int, default=4)
@@ -37,6 +41,15 @@ def main():
         state_path = ROOT / 'runs/scienceboard-inference-service.json'
         manifest = ROOT / 'reports/scienceboard-sft-model-manifest.json'
         log_name = 'inference-scienceboard-sft.log'
+    if args.replica:
+        if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,31}', args.replica) or args.port is None:
+            parser.error('A replica requires a short lowercase name and an explicit --port')
+        state_path = ROOT / 'runs' / f'inference-{args.checkpoint}-{args.replica}.json'
+        log_name = f'inference-{args.checkpoint}-{args.replica}.log'
+    if args.port is not None:
+        if not 1024 <= args.port <= 65535:
+            parser.error('--port must be between 1024 and 65535')
+        cfg['port'] = args.port
     hostname = socket.gethostname()
     if hostname not in cfg["workers"]:
         parser.error("run on an authorized worker through worker_exec.py")
@@ -78,6 +91,15 @@ def main():
     cache = Path(cfg["cache_dir"])
     cache.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, CUDA_VISIBLE_DEVICES=args.gpus, VLLM_USE_V1="1", VLLM_NO_USAGE_STATS="1", DO_NOT_TRACK="1", HF_HUB_OFFLINE="1", TOKENIZERS_PARALLELISM="false", OMP_NUM_THREADS="8", VLLM_CACHE_ROOT=str(cache / "vllm"), TRITON_CACHE_DIR=str(cache / "triton"))
+    compatibility = None
+    if args.checkpoint == 'scienceboard-sft':
+        adapter_dir = ROOT / 'scripts/scienceboard_tokenizer_compat'
+        adapter = adapter_dir / 'sitecustomize.py'
+        env['PYTHONPATH'] = str(adapter_dir) + (os.pathsep + env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
+        env['CUA_SCI_TOKENIZER_MODEL_ROOT'] = cfg['model_dir']
+        compatibility = {'kind': 'extra_special_tokens_list_to_transformers4_schema',
+                         'adapter': str(adapter), 'sha256': hashlib.sha256(adapter.read_bytes()).hexdigest(),
+                         'checkpoint_files_modified': False}
     command = [str(Path(cfg["policy_env"]) / "bin/python"), "-m", "vllm.entrypoints.openai.api_server", "--model", cfg["model_dir"], "--served-model-name", cfg["served_model_name"], "--host", "0.0.0.0", "--port", str(cfg["port"]), "--tensor-parallel-size", str(len(ids)), "--dtype", "bfloat16", "--max-model-len", "40960", "--max-num-seqs", "4", "--gpu-memory-utilization", "0.5", "--limit-mm-per-prompt", '{"image":10}', "--enforce-eager", "--disable-log-requests", "--enable-auto-tool-choice", "--tool-call-parser", "hermes", "--reasoning-parser", "qwen3", "--chat-template-content-format", "openai"]
     for flag, value in [('--max-model-len', args.max_model_len), ('--max-num-seqs', args.max_num_seqs),
                         ('--gpu-memory-utilization', args.gpu_memory_utilization),
@@ -96,8 +118,9 @@ def main():
     with log_path.open("ab", buffering=0) as log:
         process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     state = {"hostname": hostname, "pid": process.pid, "started_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(), "gpus": ids, "base_url": f"http://{hostname}.job-research-a.training.svc.cluster.local:{cfg['port']}/v1", "command": command, "model_revision": cfg["model_revision"], "log": str(log_path), "status": "starting; readiness must be checked via /health"}
-    state.update(checkpoint=args.checkpoint, model_id=cfg['model_id'], model_dir=cfg['model_dir'],
-                 served_model_name=cfg['served_model_name'], generation_overrides=overrides)
+    state.update(checkpoint=args.checkpoint, replica=args.replica, model_id=cfg['model_id'], model_dir=cfg['model_dir'],
+                 served_model_name=cfg['served_model_name'], generation_overrides=overrides,
+                 runtime_compatibility=compatibility)
     state_path.write_text(json.dumps(state, indent=2) + "\n")
     print(json.dumps(state, indent=2))
 

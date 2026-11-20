@@ -86,6 +86,7 @@ def main():
                         help='direct explicitly disables the optional OSWorld residential proxy setup')
     parser.add_argument('--recording-mode', choices=['video', 'steps-only'], default='video',
                         help='video preserves upstream recording; steps-only retains PNG/JSONL without continuous guest H.264 encoding')
+    parser.add_argument('--service-state', type=Path, help='Pinned inference replica state selected by the coordinator')
     args = parser.parse_args()
     cfg = json.loads((ROOT / 'configs/paths.json').read_text())
     lock = json.loads((ROOT / 'configs/sources.lock.json').read_text())
@@ -108,6 +109,7 @@ def main():
     selected = [tuple(value.split('/')) for value in args.tasks] if args.tasks else official
     if len(set(selected)) != len(selected) or any(t not in official for t in selected):
         parser.error('Tasks must be unique domain/id entries in the official benchmark list')
+    service_path = args.service_state or service_path
     state = json.loads(service_path.read_text())
     if args.benchmark == 'scienceboard':
         server_args = state['command']
@@ -176,6 +178,9 @@ def main():
                 'generation_overrides': state.get('generation_overrides', {}),
                 'effective_sampling_note': 'OSWorld sends top_p=1. ScienceBoard upstream omits parsed top_p; the explicitly recorded endpoint override takes precedence over generation_config.',
                 'output': str(output)}
+    manifest['inference_service'] = {'state_file': str(service_path.resolve()),
+        'state_sha256': hashlib.sha256(service_path.read_bytes()).hexdigest(),
+        'hostname': state['hostname'], 'gpus': state.get('gpus'), 'base_url': state['base_url']}
     manifest['adapter_sha256'] = {}
     for filename in ['evaluate_sft.py', 'eval_qemu_provider.py', 'qemu_runtime.py', 'scienceboard_compat.py']:
         content = (Path(__file__).resolve().parent / filename).read_bytes()

@@ -59,7 +59,7 @@ def main():
     command = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
     if str(directory).encode() not in command or not any(c.endswith(b'/run_benchmark.py') for c in command):
         raise RuntimeError('Coordinator PID identity mismatch')
-    runtime_hashes = fingerprint(directory / 'runtime', protocol['adapter_sha256'])
+    runtime_hashes = fingerprint(directory / state.get('runtime_subdirectory', 'runtime'), protocol['adapter_sha256'])
     if runtime_hashes != protocol['adapter_sha256']:
         raise RuntimeError('Pinned runtime changed')
     report_path = directory / f'resize-{time.time_ns()}.json'
@@ -123,6 +123,8 @@ def main():
                '--task-timeout', str(protocol['task_timeout_seconds']), '--resume']
         if args.concurrency_report:
             cmd += ['--concurrency-report', str(args.concurrency_report.resolve())]
+        if after.get('inference_pool'):
+            cmd += ['--service-pool', after['inference_pool']['source']]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         report.update(status='resumed', resumed_at_utc=now(), launch=json.loads(result.stdout),
                       interrupted_episodes=0, preserved_result_count=len(preserved))

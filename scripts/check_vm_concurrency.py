@@ -48,6 +48,8 @@ def main():
     parser.add_argument('--memory-mb', type=int, default=8192)
     parser.add_argument('--rounds', type=int, default=5)
     parser.add_argument('--timeout', type=int, default=300)
+    parser.add_argument('--launch-interval', type=float, default=0,
+                        help='Seconds between VM process launches; all VMs remain live for the concurrent API check')
     parser.add_argument('--base-image', type=Path)
     parser.add_argument('--report', type=Path, help='Separate report path so prior acceptance evidence is retained')
     args = parser.parse_args()
@@ -55,16 +57,19 @@ def main():
     host = socket.gethostname()
     if host not in cfg['workers']:
         parser.error('Only worker-0/1 may run VMs')
-    if args.stages != sorted(set(args.stages)) or not all(1 <= n <= 16 for n in args.stages):
-        parser.error('Use distinct increasing stages from 1 through 16')
+    if args.stages != sorted(set(args.stages)) or not all(1 <= n <= 32 for n in args.stages):
+        parser.error('Use distinct increasing stages from 1 through 32')
     if not 1 <= args.rounds <= 100 or not 30 <= args.timeout <= 600:
         parser.error('rounds must be 1..100; timeout must be 30..600 seconds')
+    if not 0 <= args.launch_interval <= 10:
+        parser.error('launch-interval must be between zero and ten seconds')
     report_path = args.report or ROOT / 'reports' / f'{args.accelerator}-concurrency-{host.removeprefix("research-a-")}.json'
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report = {'hostname': host, 'checked_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'status': 'running', 'accelerator': args.accelerator, 'stages': [],
               'requested_concurrencies': args.stages, 'vcpus_per_vm': args.cpus,
               'memory_mb_per_vm': args.memory_mb,
+              'launch_interval_seconds': args.launch_interval,
               'base_image': str((args.base_image or ROOT / 'data/osworld-vm/Ubuntu.qcow2').resolve()),
               'scope': 'VM startup and guest API acceptance, not sustained rollout throughput or benchmark score'}
     def save():
@@ -95,12 +100,24 @@ def main():
                                 check.bind((address, port))
                         vms.append(LocalVM(address=address, cpus=args.cpus, memory_mb=args.memory_mb,
                                            accelerator=args.accelerator, base_image=args.base_image))
-                    def boot(vm):
-                        state = vm.start()
-                        state['boot_seconds'] = vm.wait_ready(args.timeout)
+                    # Launch processes from one thread, then wait and exercise
+                    # every live VM concurrently. Optional pacing only affects boot.
+                    launched = []
+                    launched_at = []
+                    for index, vm in enumerate(vms):
+                        launched_at.append(time.monotonic())
+                        launched.append(vm.start())
+                        if args.launch_interval and index + 1 < count:
+                            time.sleep(args.launch_interval)
+                    stage['vms'] = launched
+                    save()
+                    def boot(item):
+                        vm, state, launch_time = item
+                        state['ready_wait_seconds'] = vm.wait_ready(args.timeout)
+                        state['boot_seconds'] = time.monotonic() - launch_time
                         return state
                     with ThreadPoolExecutor(max_workers=count) as pool:
-                        stage['vms'] = list(pool.map(boot, vms))
+                        stage['vms'] = list(pool.map(boot, zip(vms, launched, launched_at)))
                         stage['all_ready_seconds'] = time.monotonic() - started
                         stage['guest_checks'] = list(pool.map(lambda vm: exercise(vm, args.rounds), vms))
                     times = [t for item in stage['guest_checks'] for t in item['screenshot_and_control_seconds']]

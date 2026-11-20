@@ -15,9 +15,10 @@ import subprocess
 import sys
 import time
 import urllib.request
+from inference_pool import load_services, validate_routing_upgrade
 
 ROOT = Path(os.environ.get('CUA_PROJECT_ROOT', Path(__file__).resolve().parents[1])).resolve()
-ADAPTERS = ['evaluate_sft.py', 'eval_qemu_provider.py', 'qemu_runtime.py', 'run_benchmark.py', 'scienceboard_compat.py']
+ADAPTERS = ['evaluate_sft.py', 'eval_qemu_provider.py', 'qemu_runtime.py', 'run_benchmark.py', 'scienceboard_compat.py', 'inference_pool.py']
 
 
 def now():
@@ -70,6 +71,8 @@ def snapshot(state):
             'overall': aggregate(rows),
             'by_domain': {d: aggregate([r for r in rows if r['domain'] == d]) for d in domains},
             'errors': {k: v.get('error') for k, v in state['tasks'].items() if v['status'] == 'infrastructure_error'},
+            'workers': state.get('workers'), 'inference_pool': state.get('inference_pool'),
+            'protocol_migrations': state.get('protocol_migrations', []),
             'pause_reason': state.get('pause_reason')}
 
 
@@ -94,8 +97,8 @@ def check_endpoint(service):
 
 def check_concurrency(workers, cpus, memory_mb, benchmark, report_path=None):
     """Require a matching host/image/resource acceptance run above four VMs."""
-    if not 1 <= workers <= 8:
-        raise ValueError('Campaign concurrency must be between one and eight')
+    if not 1 <= workers <= 32:
+        raise ValueError('Campaign concurrency must be between one and thirty-two')
     if workers <= 4:
         return None
     if report_path is None:
@@ -138,12 +141,17 @@ def episode(args, task, output, service, expected_hashes, stopped):
     try:
         if fingerprint(args.runtime_dir, expected_hashes) != expected_hashes:
             raise RuntimeError('Adapter changed during campaign; refusing mixed protocols')
+        if service.get('_state_path') and hashlib.sha256(Path(service['_state_path']).read_bytes()).hexdigest() != service['_state_sha256']:
+            raise RuntimeError('Pinned replica state changed during campaign')
         check_endpoint(service)
         command = [sys.executable, str(args.runtime_dir / 'evaluate_sft.py'),
                    '--benchmark', args.benchmark, '--checkpoint', args.checkpoint,
                    '--accelerator', 'tcg', '--workers', '1', '--cpus', str(args.cpus),
                    '--memory-mb', str(args.memory_mb), '--recording-mode', 'steps-only',
                    '--proxy-policy', args.proxy_policy, '--tasks', task, '--run-dir', str(output)]
+        if service.get('_state_path'):
+            command += ['--service-state', service['_state_path']]
+            result['inference_service_state'] = service['_state_path']
         with log_path.open('ab', buffering=0) as log:
             process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL,
                                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
@@ -183,6 +191,8 @@ def main():
     p.add_argument('--checkpoint', choices=['osworld-sft', 'scienceboard-sft'], default='osworld-sft')
     p.add_argument('--workers', type=int, default=4)
     p.add_argument('--concurrency-report', type=Path, help='Matching VM acceptance report, required above four workers')
+    p.add_argument('--service-pool', type=Path, help='Pool of identical checkpoint replicas with equivalent inference flags')
+    p.add_argument('--upgrade-service-routing', action='store_true', help='Audited routing-only launcher upgrade on a drained legacy campaign')
     p.add_argument('--cpus', type=int, default=4)
     p.add_argument('--memory-mb', type=int, default=8192)
     p.add_argument('--proxy-policy', choices=['upstream', 'direct'], default='upstream')
@@ -218,9 +228,27 @@ def main():
     service_file = 'inference-service.json' if args.checkpoint == 'osworld-sft' else 'scienceboard-inference-service.json'
     service = json.loads((ROOT / 'runs' / service_file).read_text())
     check_endpoint(service)
+    services = load_services(args.service_pool, service) if args.service_pool else [service]
+    for item in services:
+        check_endpoint(item)
     tasks, task_hash = official_tasks(args.benchmark)
     path = output / 'campaign.json'
-    args.runtime_dir = output / 'runtime'
+    previous = json.loads(path.read_text()) if path.exists() else None
+    args.runtime_dir = output / (previous.get('runtime_subdirectory', 'runtime') if previous else 'runtime')
+    migration = None
+    if args.upgrade_service_routing:
+        if previous is None or not args.resume or not args.service_pool or previous['status'] == 'running':
+            p.error('Routing upgrade requires --resume, --service-pool and a drained existing campaign')
+        old_hashes = previous['protocol']['adapter_sha256']
+        if fingerprint(args.runtime_dir, old_hashes) != old_hashes:
+            p.error('Original runtime differs from its recorded hashes; routing upgrade refused')
+        if any(row['status'] == 'running' for row in previous['tasks'].values()):
+            p.error('Routing upgrade requires every active episode to finish first')
+        migration = validate_routing_upgrade(args.runtime_dir, ROOT / 'scripts')
+        args.runtime_dir = output / 'runtimes' / f'service-routing-{time.time_ns()}'
+        args.runtime_dir.mkdir(parents=True, exist_ok=False)
+        for name in ADAPTERS:
+            (args.runtime_dir / name).write_bytes((ROOT / 'scripts' / name).read_bytes())
     if not path.exists():
         args.runtime_dir.mkdir(exist_ok=False)
         for name in ADAPTERS:
@@ -229,7 +257,7 @@ def main():
         p.error('Legacy campaign has no immutable runtime snapshot; start a new version')
     # A legacy campaign must keep exactly its original runtime file set.
     # New campaigns include all current adapters; missing pinned files always fail.
-    pinned_names = json.loads(path.read_text())['protocol']['adapter_sha256'] if path.exists() else ADAPTERS
+    pinned_names = previous['protocol']['adapter_sha256'] if previous and not migration else ADAPTERS
     protocol = {'benchmark': args.benchmark, 'checkpoint': args.checkpoint,
                 'model_revision': service['model_revision'], 'server_command': service['command'],
                 'task_list_sha256': task_hash, 'adapter_sha256': fingerprint(args.runtime_dir, pinned_names),
@@ -239,7 +267,18 @@ def main():
     if path.exists():
         if not args.resume:
             p.error('Existing campaign requires --resume; nothing is overwritten')
-        state = json.loads(path.read_text())
+        state = previous
+        if migration:
+            old_semantics = {k: v for k, v in state['protocol'].items() if k != 'adapter_sha256'}
+            new_semantics = {k: v for k, v in protocol.items() if k != 'adapter_sha256'}
+            if old_semantics != new_semantics:
+                p.error('Routing upgrade must preserve checkpoint, generation, task list and VM protocol')
+            state.setdefault('protocol_migrations', []).append({
+                'at_utc': now(), 'kind': 'inference_service_routing_only', 'validation': migration,
+                'previous_protocol': state['protocol'], 'new_protocol': protocol,
+                'preserved_completed_results': {k: r['score'] for k, r in state['tasks'].items() if r['status'] == 'completed'}})
+            state['protocol'] = protocol
+            state['runtime_subdirectory'] = str(args.runtime_dir.relative_to(output))
         if state['protocol'] != protocol:
             p.error('Resume protocol differs from the original campaign')
         if state['hostname'] != socket.gethostname():
@@ -277,9 +316,26 @@ def main():
     coordinator_dir.mkdir(exist_ok=True)
     coordinator_path = coordinator_dir / f'{time.time_ns()}-{os.getpid()}.py'
     coordinator_path.write_bytes(coordinator_code)
+    if args.service_pool:
+        if '--service-state' not in (args.runtime_dir / 'evaluate_sft.py').read_text():
+            p.error('Legacy runtime needs the explicit routing-only upgrade before replica selection')
+        service_dir = coordinator_path.with_suffix('.services')
+        service_dir.mkdir()
+        pinned_services = []
+        for index, item in enumerate(services):
+            pinned = service_dir / f'{index:02d}.json'
+            write_json(pinned, item)
+            pinned_services.append({**item, '_state_path': str(pinned),
+                                    '_state_sha256': hashlib.sha256(pinned.read_bytes()).hexdigest()})
+        services = pinned_services
+        state['inference_pool'] = {'source': str(args.service_pool.resolve()),
+                                   'services': [{k: item[k] for k in ['hostname', 'gpus', 'base_url', 'model_revision', '_state_path', '_state_sha256']} for item in services]}
+    elif state.get('inference_pool'):
+        p.error('Resuming a pooled campaign requires --service-pool')
     state.setdefault('launch_history', []).append({
         'at_utc': now(), 'pid': os.getpid(), 'retry_errors': args.retry_errors,
         'workers': args.workers, 'concurrency_acceptance': concurrency_evidence,
+        'inference_pool': state.get('inference_pool'),
         'scheduled_tasks': queue.copy(), 'coordinator_snapshot': str(coordinator_path),
         'coordinator_sha256': hashlib.sha256(coordinator_code).hexdigest()})
     stopped = [False]
@@ -301,6 +357,7 @@ def main():
     consecutive_errors = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         active = {}
+        free_slots = list(range(args.workers))
         while queue or active:
             while queue and len(active) < args.workers and not stopped[0] and not draining[0]:
                 task = queue.pop(0)
@@ -309,13 +366,16 @@ def main():
                 attempt.parent.mkdir(parents=True, exist_ok=True)
                 row['attempts'].append({'attempt_dir': str(attempt), 'status': 'running'})
                 row['status'] = 'running'
-                active[pool.submit(episode, args, task, attempt, service, protocol['adapter_sha256'], lambda: stopped[0])] = task
+                slot = free_slots.pop(0)
+                selected_service = services[slot % len(services)]
+                active[pool.submit(episode, args, task, attempt, selected_service, protocol['adapter_sha256'], lambda: stopped[0])] = (task, slot)
                 save()
             if not active:
                 break
             done, _ = concurrent.futures.wait(active, timeout=15, return_when=concurrent.futures.FIRST_COMPLETED)
             for future in done:
-                task = active.pop(future)
+                task, slot = active.pop(future)
+                free_slots.append(slot)
                 result = future.result()
                 row = state['tasks'][task]
                 row['attempts'][-1] = result
