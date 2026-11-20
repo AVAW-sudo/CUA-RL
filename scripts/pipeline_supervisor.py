@@ -11,6 +11,7 @@ import sys
 import time
 import urllib.request
 
+from persistent_job import identity, alive
 from evaluation_recovery import retry_eligible
 from run_benchmark import ROOT, now, write_json
 from write_evaluation_report import generate
@@ -37,6 +38,8 @@ def resume(directory, state):
            '--run-dir', str(directory), '--benchmark', p['benchmark'], '--checkpoint', p['checkpoint'],
            '--workers', str(state['workers']), '--cpus', str(p['cpus']), '--memory-mb', str(p['memory_mb']),
            '--proxy-policy', p['proxy_policy'], '--task-timeout', str(p['task_timeout_seconds'])]
+    if p.get('subset_file'):
+        cmd += ['--task-subset', p['subset_file']]
     acceptance = state['launch_history'][-1].get('concurrency_acceptance')
     if acceptance:
         cmd += ['--concurrency-report', acceptance['source']]
@@ -119,6 +122,20 @@ def maintain_services(paths, supervisor):
             item['restart_error'] = str(exc)
 
 
+def find_stage(stage, config):
+    expected = [str(ROOT / 'scripts/original_rl_pipeline.py'), stage, '--config', str(config)]
+    for directory in Path('/proc').glob('[0-9]*'):
+        try:
+            argv = [x.decode() for x in (directory / 'cmdline').read_bytes().split(b'\0') if x]
+            if any(argv[i:i + len(expected)] == expected for i in range(len(argv))):
+                candidate = identity(int(directory.name))
+                if candidate:
+                    return candidate
+        except (OSError, UnicodeError, ValueError):
+            continue
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT / 'configs/original-rl-pipeline.json')
@@ -126,13 +143,16 @@ def main():
     args = parser.parse_args()
     if socket.gethostname() != 'research-a-worker-1':
         parser.error('Pipeline supervisor belongs on worker-1')
-    directory = ROOT / 'runs/original-rl-pipeline'
+    initial_config = json.loads(args.config.read_text())
+    directory = ROOT / initial_config.get('state_directory', 'runs/original-rl-pipeline')
     directory.mkdir(exist_ok=True)
     lease = (directory / 'supervisor.lock').open('a')
     fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
     state_path = directory / 'state.json'
     state = json.loads(state_path.read_text()) if state_path.exists() else {'phase': 'sft_evaluation', 'stage_index': 0, 'events': []}
-    state.update(pid=os.getpid(), hostname=socket.gethostname())
+    state.update(pid=os.getpid(), hostname=socket.gethostname(), process_identity=identity(os.getpid()))
+    state['updated_at_utc'] = now()
+    write_json(state_path, state)
     while True:
         cfg = json.loads(args.config.read_text())
         try:
@@ -158,6 +178,7 @@ def main():
                     if receipt and receipt['exit_code'] == 0:
                         state['events'].append({'at_utc': now(), 'event': 'stage_completed', 'stage': stage})
                         state['stage_index'] += 1
+                        state.pop('stage_error', None)
                     elif receipt:
                         state['stage_error'] = {'stage': stage, 'receipt': str(receipt_path), 'exit_code': receipt['exit_code']}
                         failures = state.setdefault('stage_failures', {}).get(stage, 0)
@@ -175,15 +196,24 @@ def main():
                     elif process_path.exists():
                         process = json.loads(process_path.read_text())
                         live_path = Path(f'/proc/{process["pid"]}/cmdline')
-                        if not live_path.exists() or str(ROOT / 'scripts/original_rl_pipeline.py').encode() not in live_path.read_bytes():
-                            state['stage_error'] = {'stage': stage, 'reason': 'Stage process disappeared without a receipt; preserve state for recovery'}
+                        if ((process.get('identity') and not alive(process['identity'])) or not live_path.exists()
+                                or str(ROOT / 'scripts/original_rl_pipeline.py').encode() not in live_path.read_bytes()):
+                            write_json(receipt_path, {'stage': stage, 'exit_code': 1, 'finished_at_utc': now(),
+                                'error': 'Stage process disappeared; resume via persisted command receipts and campaign states'})
                     else:
-                        log = (directory / (stage + '.log')).open('ab', buffering=0)
-                        proc = subprocess.Popen([PYTHON, str(ROOT / 'scripts/original_rl_pipeline.py'), stage],
-                                                cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                                start_new_session=True)
-                        write_json(process_path, {'pid': proc.pid, 'stage': stage, 'started_at_utc': now()})
-                        state['events'].append({'at_utc': now(), 'event': 'stage_started', 'stage': stage, 'pid': proc.pid})
+                        owned = find_stage(stage, args.config)
+                        if owned:
+                            write_json(process_path, {'pid': owned['pid'], 'identity': owned, 'stage': stage, 'adopted_at_utc': now()})
+                            state['events'].append({'at_utc': now(), 'event': 'adopt_existing_stage', 'stage': stage, 'pid': owned['pid']})
+                        else:
+                            with (directory / (stage + '.log')).open('ab', buffering=0) as log:
+                                proc = subprocess.Popen([PYTHON, str(ROOT / 'scripts/original_rl_pipeline.py'), stage, '--config', str(args.config)],
+                                                        cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                                        start_new_session=True)
+                            write_json(process_path, {'pid': proc.pid, 'identity': identity(proc.pid), 'stage': stage, 'started_at_utc': now()})
+                            state['events'].append({'at_utc': now(), 'event': 'stage_started', 'stage': stage, 'pid': proc.pid})
+            if cfg['enabled']:
+                state.pop('control', None)
             state.pop('loop_error', None)
         except Exception as exc:
             state['loop_error'] = {'at_utc': now(), 'type': type(exc).__name__, 'message': str(exc)}

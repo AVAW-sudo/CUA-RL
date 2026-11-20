@@ -1,0 +1,98 @@
+{
+  "enabled": true,
+  "purpose": "SFT report then fixed 64-task original GRPO pilot (25 update opportunities)",
+  "sft_campaigns": [
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/benchmarks/osworld-sft__osworld361-tcg-v3",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/benchmarks/osworld-sft__scienceboard169-tcg-v5",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/benchmarks/scienceboard-sft__scienceboard169-tcg-v5-pool"
+  ],
+  "sft_service_states": [
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/inference-service.json",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/inference-osworld-sft-r1.json",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/inference-osworld-sft-r2.json",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/scienceboard-inference-service.json",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/inference-scienceboard-sft-r1.json",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/inference-scienceboard-sft-r2.json",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/inference-scienceboard-sft-r3.json",
+    "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/inference-scienceboard-sft-r4.json"
+  ],
+  "stages": [
+    "frontier_initialization",
+    "original_grpo",
+    "reproduced_checkpoint_evaluation",
+    "released_rl_reference"
+  ],
+  "algorithm_changes_enabled": false,
+  "training_config": "configs/qwen3vl-osworld-original-pilot-8gpu.yaml",
+  "worker_config": "configs/osworld-pilot-worker.yaml",
+  "frontier_tasks": 64,
+  "frontier_runs_per_task": 4,
+  "first_training_report_update": 25,
+  "source_max_steps": 1000,
+  "source_loop_note": "Pinned upstream starts global_step at 1 and loops while global_step < max_steps: 999 update opportunities; skipped empty batches are reported separately.",
+  "original_settings": {
+    "advantage": "grpo",
+    "Frontier": true,
+    "batch_size": 16,
+    "rollouts_per_task": 8,
+    "lr": 3e-06,
+    "max_rounds": 50,
+    "kl_coef": 0.0001,
+    "freeze_vit": true,
+    "max_total_len": 30000,
+    "rollout_context": 200000
+  },
+  "adaptations": {
+    "worker": "worker-1",
+    "gpus": 8,
+    "rollout_gpus": 2,
+    "actor_reference_gpus": 6,
+    "environment_concurrency": 48,
+    "upstream_environment_concurrency": 256,
+    "vm_backend": "Original OSWorld image; QEMU TCG full savevm/loadvm pool with guest clock correction; cold replacement on failed reset",
+    "network": "direct",
+    "agent": "Released ScaleCUAOSWorldAgent adapter; public source references anthropic_rl but omits the module. This limits claims of exact trajectory-protocol reproduction.",
+    "checkpoint_retention": 2,
+    "final_checkpoint_save": "Save the final boundary, including skipped empty batches, so preceding updates are durable; training math and true update accounting unchanged.",
+    "checkpoint_interval": 5,
+    "task_pool_size": 64
+  },
+  "failure_policy": {
+    "evaluation_max_attempts": 3,
+    "retry_only_explicit_zero_action_setup_failures": true,
+    "unresolved_benchmark_cases": "Finalize with explicit missingness and full-denominator bounds after bounded recovery; never fabricate scores. Continue original-RL preparation.",
+    "frontier_missing_rates": "Never invent rates or disable Frontier; preserve incomplete pre-runs for repair."
+  },
+  "full_training_config": "configs/qwen3vl-osworld-original-8gpu.yaml",
+  "automatic_update_budget": 25,
+  "budget_basis": "User explicitly selected option 1: first 25 original-GRPO updates then checkpoint evaluation; no algorithm variants.",
+  "secondary_environment_worker": {
+    "enabled": true,
+    "hostname": "research-a-worker-0",
+    "concurrency": 16,
+    "config": "configs/osworld-pilot-worker0.yaml",
+    "acceptance_report": "reports/tcg-osworld-32vm-worker-0-20261120.json",
+    "rpc_smoke_report": "reports/distributed-osworld-pilot-worker0-smoke.json",
+    "gpu_allocation": 0,
+    "policy": "Enable only after matching VM acceptance and cross-node episode initialization/control pass; otherwise keep primary 32-way execution."
+  },
+  "state_directory": "runs/original-rl-pilot-pipeline",
+  "task_name": "osworld-pilot",
+  "indices_file": "/aigc/aigc_research/wangjing/CODE/CUA-RL/configs/original-pilot/train-indices.json",
+  "rates_file": "/aigc/aigc_research/wangjing/CODE/CUA-RL/configs/original-pilot/initial_pass_rates.json",
+  "frontier_output": "runs/frontier-pilot-initialization",
+  "run_name": "original-grpo-pilot-worker1",
+  "evaluation_subsets": {
+    "osworld": "/aigc/aigc_research/wangjing/CODE/CUA-RL/configs/original-pilot/osworld-eval.json",
+    "scienceboard": "/aigc/aigc_research/wangjing/CODE/CUA-RL/configs/original-pilot/scienceboard-eval.json"
+  },
+  "evaluation_suffix": "original-pilot-v1",
+  "pilot_manifest": "configs/original-pilot/manifest.json",
+  "backend_acceptance": {
+    "worker_0": "reports/snapshot-concurrency-worker-0-v2.json",
+    "worker_1": "reports/snapshot-concurrency-worker-1-v2.json",
+    "task_parity": "reports/snapshot-task-reset-production-osworld.json",
+    "secondary_rpc": "reports/distributed-osworld-pilot-worker0-smoke.json",
+    "implementation_sha256": "bec8cb94ce720c1ae3d1f8ad2be2da7ffe9052ae12ef58f88421a51bf817724d"
+  }
+}

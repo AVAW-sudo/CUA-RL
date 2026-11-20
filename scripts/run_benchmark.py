@@ -209,6 +209,7 @@ def main():
     p.add_argument('--retry-backoff-seconds', type=int, default=30)
     p.add_argument('--launch-interval', type=float, default=1.0,
                    help='Pace new episode process launches to reduce simultaneous guest boot load')
+    p.add_argument('--task-subset', type=Path, help='Frozen evaluation subset with its own explicit denominator; not a full benchmark')
     p.add_argument('--only-tasks', nargs='+', help='Schedule only these domain/id entries; retain the full benchmark denominator')
     args = p.parse_args()
     if not 1 <= args.max_infra_attempts <= 5 or not 0 <= args.retry_backoff_seconds <= 300:
@@ -248,6 +249,15 @@ def main():
     tasks, task_hash = official_tasks(args.benchmark)
     path = output / 'campaign.json'
     previous = json.loads(path.read_text()) if path.exists() else None
+    subset_path = args.task_subset or (Path(previous['protocol']['subset_file']) if previous and previous['protocol'].get('subset_file') else None)
+    subset_protocol = {}
+    if subset_path:
+        selected = json.loads(subset_path.read_text())
+        if not selected or len(set(selected)) != len(selected) or not set(selected) <= set(tasks):
+            p.error('Subset must contain unique official domain/id task IDs')
+        subset_protocol = {'subset_file': str(subset_path.resolve()), 'subset_sha256': hashlib.sha256(subset_path.read_bytes()).hexdigest(),
+                           'official_task_count': len(tasks), 'scope': 'Frozen task subset; not a full benchmark score'}
+        tasks = selected
     args.runtime_dir = output / (previous.get('runtime_subdirectory', 'runtime') if previous else 'runtime')
     migration = None
     if args.upgrade_service_routing:
@@ -277,7 +287,7 @@ def main():
                 'task_list_sha256': task_hash, 'adapter_sha256': fingerprint(args.runtime_dir, pinned_names),
                 'accelerator': 'tcg', 'recording_mode': 'steps-only', 'cpus': args.cpus,
                 'memory_mb': args.memory_mb, 'proxy_policy': args.proxy_policy,
-                'task_timeout_seconds': args.task_timeout, 'samples_per_task': 1}
+                'task_timeout_seconds': args.task_timeout, 'samples_per_task': 1, **subset_protocol}
     if path.exists():
         if not args.resume:
             p.error('Existing campaign requires --resume; nothing is overwritten')

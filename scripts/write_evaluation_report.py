@@ -51,7 +51,7 @@ def generate(paths, output, final=False):
     for c in campaigns:
         m = c['overall']; bounds = c['full_denominator_success_bounds']
         exact = f"{m['success_rate']:.2%}" if m['success_rate'] is not None else '待缺测项补判'
-        rows.append(f"<tr><td>{esc(c['checkpoint'])}</td><td>{esc(c['benchmark'])}</td><td>{m['completed']}/{m['total']}</td><td>{m['successes']}</td><td>{exact}</td><td>{bounds[0]:.2%}–{bounds[1]:.2%}</td></tr>")
+        rows.append(f"<tr><td>{esc(c['checkpoint'])}</td><td>{esc(c['benchmark'])}{'（固定子集）' if c['protocol'].get('subset_file') else ''}</td><td>{m['completed']}/{m['total']}</td><td>{m['successes']}</td><td>{exact}</td><td>{bounds[0]:.2%}–{bounds[1]:.2%}</td></tr>")
         domains = ''.join(f"<tr><td>{esc(k)}</td><td>{v['completed']}/{v['total']}</td><td>{v['successes']}</td><td>{v['infrastructure_or_verifier_errors']}</td></tr>" for k, v in c['by_domain'].items())
         errors = ''.join(f"<li><b>{esc(k)}</b>: {esc(str(v.get('error')))}</li>" for k, v in c['unscored'].items()) or '<li>无</li>'
         detail.append(f"<h2>{esc(c['campaign'])}</h2><p>revision: {esc(c['protocol']['model_revision'])}；单题一次采样，保留所有尝试。重试题数：{len(c['retries'])}。</p><table><tr><th>应用</th><th>有效/总数</th><th>完全成功</th><th>异常</th></tr>{domains}</table><h3>缺测和待审计项</h3><ul>{errors}</ul>")

@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "purpose": "Finish frozen SFT evaluation, publish report, then reproduce original RL before any algorithm changes",
   "sft_campaigns": [
     "/aigc/aigc_research/wangjing/CODE/CUA-RL/runs/benchmarks/osworld-sft__osworld361-tcg-v3",
@@ -81,5 +81,6 @@
     "rpc_smoke_report": "reports/distributed-osworld-worker0-smoke.json",
     "gpu_allocation": 0,
     "policy": "Enable only after matching VM acceptance and cross-node episode initialization/control pass; otherwise keep primary 32-way execution."
-  }
+  },
+  "disabled_reason": "User requested a small original-GRPO baseline first. Active experiment: configs/original-rl-pilot-pipeline.json. Full-pool configuration is preserved, not scheduled concurrently."
 }

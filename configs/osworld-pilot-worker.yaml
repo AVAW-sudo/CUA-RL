@@ -1,0 +1,26 @@
+osworld-pilot:
+  module: local_osworld.LocalOSWorldTask
+  parameters:
+    name: osworld-pilot
+    concurrency: 32
+    max_rounds: 50
+    agent_version: scalecua_osworld
+    agent_config:
+      scalecua_osworld:
+        relative_coordinate: true
+        only_n_most_recent_images: 5
+        incremental_messages: true
+    env_version: anthropic
+    env_config:
+      anthropic:
+        type: Ubuntu-modified
+    use_proxy: false
+    images_dir: /aigc/aigc_research/wangjing/CODE/CUA-RL/data/osworld-vm
+    data_path: /aigc/aigc_research/wangjing/CODE/CUA-RL/data/ScaleCUA/osworld/rl_tasks
+    examples_path: /aigc/aigc_research/wangjing/CODE/CUA-RL/configs/original-pilot/train-examples.json
+    judge_functions_path: /aigc/aigc_research/wangjing/CODE/CUA-RL/data/ScaleCUA/osworld/judge_functions/rl_tasks
+    cache_dir: /aigc/aigc_research/wangjing/CODE/CUA-RL/runs/pilot-env-cache-worker1
+    record_dir: /aigc/aigc_research/wangjing/CODE/CUA-RL/runs/pilot-records-worker1
+    vm_cpu: 4
+    vm_ram: 8
+    warm_reset_report: /aigc/aigc_research/wangjing/CODE/CUA-RL/reports/snapshot-concurrency-worker-1-v2.json

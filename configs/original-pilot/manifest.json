@@ -1,0 +1,20 @@
+{
+  "selection_seed": "scalecua-original-pilot-20261120-v1",
+  "selection": "Deterministic domain round-robin over SHA256-ranked IDs; no outcomes consulted",
+  "train_count": 64,
+  "frontier_runs_per_task": 4,
+  "update_opportunities": 25,
+  "osworld_eval_count": 30,
+  "scienceboard_eval_count": 20,
+  "seed_disjoint_from_pilot_train": true,
+  "selection_hashes": {
+    "train-indices.json": "ba88c5ac1a697b6149d27adee74242f82d006261de9cb9a5cd40b1faad2ecf54",
+    "train-examples.json": "c225ee10df36acb0b7261d73f24c9e5dd14680b3302723ef753c64d72bc04821",
+    "osworld-eval.json": "7688e48f0fd9b4bccfbbe38e2615e8f88ec19a6cb42ee75e9c719e771f74b87e",
+    "scienceboard-eval.json": "e886d794fda89d38da08922b56327cb8022e5d4e05a08e054f235101554113f4"
+  },
+  "limitations": [
+    "Small-pool original-GRPO pilot, not a full 2049-task reproduction or full benchmark score.",
+    "Released SFT/RL checkpoints may have seen the benchmark seed tasks; no pretraining-disjoint claim."
+  ]
+}

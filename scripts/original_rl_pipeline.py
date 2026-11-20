@@ -1,6 +1,8 @@
 """Executable stages for released-RL evaluation, Frontier initialization, and original GRPO."""
 import argparse
 import hashlib
+import fcntl
+import persistent_job
 import json
 import os
 from pathlib import Path
@@ -16,6 +18,35 @@ from write_evaluation_report import generate
 
 DIRECTORY = ROOT / 'runs/original-rl-pipeline'
 CONFIG = ROOT / 'configs/original-rl-pipeline.json'
+
+
+def configuration():
+    return json.loads(CONFIG.read_text())
+
+
+def existing_job(kind):
+    paths = sorted((DIRECTORY / 'jobs' / kind).glob('attempt-*'))
+    if not paths:
+        return None
+    job = persistent_job.attach(paths[-1])
+    if job is None:
+        return None
+    try:
+        code = job.poll()
+    except RuntimeError:
+        return None
+    return job if code is None or code == 0 else None
+
+
+def start_job(kind, command):
+    existing = existing_job(kind)
+    if existing:
+        return existing
+    parent = DIRECTORY / 'jobs' / kind
+    number = len(list(parent.glob('attempt-*'))) + 1
+    if number > 3:
+        raise RuntimeError('Persistent command retry budget exhausted: ' + kind)
+    return persistent_job.start(parent / f'attempt-{number:02d}', command, ROOT)
 
 
 def call(arguments, timeout=None):
@@ -61,7 +92,17 @@ def start_pool(checkpoint, frontier=False):
         if gpu:
             command += ['--replica', f'r{gpu}']
             path = ROOT / 'runs' / f'inference-{checkpoint}-r{gpu}.json'
-        call(command)
+        reuse = False
+        if path.exists():
+            recorded = json.loads(path.read_text())
+            expected_len = '200000' if frontier else '65536'
+            if (recorded.get('model_revision') == spec['model_revision'] and
+                    recorded.get('gpus') == [str(gpu)] and
+                    recorded['command'][recorded['command'].index('--max-model-len') + 1] == expected_len):
+                proc = Path(f'/proc/{recorded["pid"]}/cmdline')
+                reuse = proc.exists() and str(spec['model_dir']).encode() in proc.read_bytes().split(b'\0')
+        if not reuse:
+            call(command)
         paths.append(str(path))
         write_json(pool, {'checkpoint': checkpoint, 'service_states': paths})
     deadline = time.monotonic() + 900
@@ -79,6 +120,22 @@ def vm_acceptance():
     path = ROOT / 'reports/tcg-osworld-32vm-pipeline.json'
     if path.exists() and json.loads(path.read_text()).get('status') == 'passed':
         return path
+    # Attach to an acceptance run already launched by preparation; never boot
+    # another 32 guests merely because its report is still in progress.
+    deadline = time.monotonic() + 600
+    while path.exists() and json.loads(path.read_text()).get('status') == 'running':
+        matching = False
+        for candidate in Path('/proc').glob('[0-9]*/cmdline'):
+            try:
+                argv = candidate.read_bytes().split(b'\0')
+                matching |= str(ROOT / 'scripts/check_vm_concurrency.py').encode() in argv and str(path).encode() in argv
+            except OSError:
+                pass
+        if not matching or time.monotonic() > deadline:
+            break
+        time.sleep(5)
+        if json.loads(path.read_text()).get('status') == 'passed':
+            return path
     for attempt in range(1, 4):
         current = path.with_name(f'tcg-osworld-32vm-pipeline-attempt{attempt}.json')
         if current.exists():
@@ -96,7 +153,9 @@ def vm_acceptance():
 
 
 def evaluate(checkpoint):
-    existing = [ROOT / 'runs/benchmarks' / f'{checkpoint}__{benchmark}-original-pipeline-v1'
+    cfg = configuration()
+    suffix = cfg.get('evaluation_suffix', 'original-pipeline-v1')
+    existing = [ROOT / 'runs/benchmarks' / f'{checkpoint}__{benchmark}-{suffix}'
                 for benchmark in ['osworld', 'scienceboard']]
     if any((path / 'campaign.json').exists() for path in existing):
         # A crash can occur between the two campaign launches. Keep every
@@ -114,12 +173,13 @@ def evaluate(checkpoint):
         half = services[index * 4:(index + 1) * 4]
         subpool = ROOT / 'runs/inference-pools' / f'{checkpoint}-{benchmark}.json'
         write_json(subpool, {'checkpoint': checkpoint, 'service_states': half})
-        directory = ROOT / 'runs/benchmarks' / f'{checkpoint}__{benchmark}-original-pipeline-v1'
+        directory = ROOT / 'runs/benchmarks' / f'{checkpoint}__{benchmark}-{suffix}'
         if not (directory / 'campaign.json').exists():
             report = acceptance if benchmark == 'osworld' else ROOT / 'reports/tcg-scienceboard-32vm-paced-worker-1-20261120.json'
             call([PYTHON, str(ROOT / 'scripts/run_benchmark.py'), 'start', '--benchmark', benchmark,
                   '--checkpoint', checkpoint, '--workers', '16', '--proxy-policy', 'direct',
-                  '--concurrency-report', str(report), '--service-pool', str(subpool), '--run-dir', str(directory)])
+                  '--concurrency-report', str(report), '--service-pool', str(subpool), '--run-dir', str(directory)]
+                 + (['--task-subset', cfg['evaluation_subsets'][benchmark]] if cfg.get('evaluation_subsets') else []))
         paths.append(str(directory))
     state = {}
     while maintain_campaigns(paths, state):
@@ -133,9 +193,13 @@ def evaluate(checkpoint):
 
 
 def comparison_report():
+    if configuration().get('pilot_manifest'):
+        from write_pilot_report import report
+        report(final=True)
+        return
     paths = json.loads(CONFIG.read_text())['sft_campaigns']
     for checkpoint in ['osworld-rl-reference', 'reproduced-rl']:
-        paths += [str(path) for path in (ROOT / 'runs/benchmarks').glob(checkpoint + '__*-original-pipeline-v1')
+        paths += [str(path) for path in (ROOT / 'runs/benchmarks').glob(checkpoint + '__*-' + configuration().get('evaluation_suffix', 'original-pipeline-v1'))
                   if (path / 'campaign.json').exists()]
     generate(paths, ROOT / 'reports/sft-and-original-rl-comparison', final=True)
 
@@ -152,6 +216,8 @@ def secondary_worker_start():
             raise RuntimeError('Cross-node episode initialization/control has not passed')
         if smoke.get('worker_config_sha256') != hashlib.sha256((ROOT / cfg['config']).read_bytes()).hexdigest():
             raise RuntimeError('Secondary worker configuration changed since its RPC smoke')
+        if configuration().get('indices_file') and smoke.get('indices_sha256') != hashlib.sha256((ROOT / configuration()['indices_file']).read_bytes()).hexdigest():
+            raise RuntimeError('Secondary worker task selection changed since its RPC smoke')
         # Validate acceptance on its own host; no GPU is allocated there.
         code = (f'import sys; sys.path.insert(0, {str(ROOT / "scripts")!r}); '
                 f'from run_benchmark import check_concurrency; '
@@ -168,13 +234,13 @@ def secondary_worker_start():
                 raise RuntimeError('A different secondary worker configuration is running')
         if not live:
             remote(host, [PYTHON, str(ROOT / 'scripts/infra_service.py'), 'osworld-worker', 'start',
-                          '--config', cfg['config'], '--task-name', 'osworld-rl', '--controller',
+                          '--config', cfg['config'], '--task-name', configuration().get('task_name', 'osworld-rl'), '--controller',
                           'http://research-a-worker-1.job-research-a.training.svc.cluster.local:18520/api'])
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             with opener.open('http://127.0.0.1:18520/api/list_workers', timeout=5) as response:
-                workers = json.load(response).get('osworld-rl', {}).get('workers', {})
+                workers = json.load(response).get(configuration().get('task_name', 'osworld-rl'), {}).get('workers', {})
             for worker in workers.values():
                 if (worker['address'].startswith('http://' + host + '.') and worker['status'] == 'ALIVE'
                         and not worker['stale'] and worker['capacity'] == cfg['concurrency']):
@@ -191,92 +257,110 @@ def secondary_worker_start():
 
 
 def infrastructure_start():
+    cfg = configuration()
+    task_name = cfg.get('task_name', 'osworld-rl')
+    worker_config = cfg.get('worker_config', 'configs/osworld-original-worker.yaml')
     for service in ['controller', 'osworld-worker']:
         path = ROOT / 'runs' / (service + '-service.json')
         if path.exists():
             state = json.loads(path.read_text())
             proc = Path(f'/proc/{state["pid"]}/cmdline')
             if proc.exists() and state['identity'].encode() in proc.read_bytes():
-                if service == 'osworld-worker' and 'osworld-original-worker.yaml' not in state['identity']:
+                if service == 'osworld-worker' and worker_config != state['identity']:
                     raise RuntimeError('Another owned worker configuration is still running; inspect before replacing')
                 continue
         command = [PYTHON, str(ROOT / 'scripts/infra_service.py'), service, 'start']
         if service == 'osworld-worker':
-            command += ['--config', 'configs/osworld-original-worker.yaml', '--task-name', 'osworld-rl']
+            command += ['--config', worker_config, '--task-name', task_name]
         call(command)
     deadline = time.monotonic() + 180
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     while time.monotonic() < deadline:
         try:
-            with opener.open('http://127.0.0.1:18520/api/get_indices?name=osworld-rl', timeout=5) as response:
+            with opener.open('http://127.0.0.1:18520/api/get_indices?name=' + task_name, timeout=5) as response:
                 actual = {str(x) for x in json.load(response) if x != -1}
-            expected = set(json.loads((ROOT / 'configs/rl-indices.json').read_text()))
+            expected = set(json.loads((ROOT / cfg.get('indices_file', 'configs/rl-indices.json')).read_text()))
             if actual == expected:
                 with opener.open('http://127.0.0.1:18520/api/list_workers', timeout=5) as response:
-                    workers = json.load(response)['osworld-rl']['workers'].values()
+                    workers = json.load(response)[task_name]['workers'].values()
                 if any(w['address'] == 'http://127.0.0.1:18521/api' and w['status'] == 'ALIVE'
                        and not w['stale'] and w['capacity'] == 32 for w in workers):
                     return 32 + secondary_worker_start()
         except Exception:
             pass
         time.sleep(5)
-    raise RuntimeError('Controller does not expose exactly the pinned 2049-task pool')
+    raise RuntimeError('Controller does not expose exactly the selected pinned task pool')
 
 
 def frontier_initialization():
-    stop_inference()
-    vm_acceptance()
-    capacity = infrastructure_start()
-    pool, services = start_pool('osworld-sft', frontier=True)
-    log = (DIRECTORY / 'frontier-collector.log').open('ab', buffering=0)
-    proc = subprocess.Popen([PYTHON, str(ROOT / 'scripts/collect_frontier_rates.py'), '--service-pool', str(pool),
-                             '--concurrency', str(capacity)],
-                            cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+    cfg = configuration()
+    proc = existing_job('frontier')
+    if proc:
+        services = json.loads((ROOT / 'runs/inference-pools/osworld-sft-pipeline.json').read_text())['service_states']
+    else:
+        # Do not stop an already bootstrapped matching Frontier pool on recovery.
+        pool_path = ROOT / 'runs/inference-pools/osworld-sft-pipeline.json'
+        bootstrapping = (DIRECTORY / 'frontier-bootstrap.json').exists()
+        if not bootstrapping:
+            stop_inference()
+            write_json(DIRECTORY / 'frontier-bootstrap.json', {'at_utc': now()})
+        vm_acceptance()
+        capacity = infrastructure_start()
+        pool, services = start_pool('osworld-sft', frontier=True)
+        proc = start_job('frontier', [PYTHON, str(ROOT / 'scripts/collect_frontier_rates.py'),
+                    '--service-pool', str(pool), '--concurrency', str(capacity),
+                    '--indices', str(ROOT / cfg.get('indices_file', 'configs/rl-indices.json')),
+                    '--task-name', cfg.get('task_name', 'osworld-rl'),
+                    '--rates-output', str(ROOT / cfg.get('rates_file', 'configs/initial_pass_rate.osworld-rl.json')),
+                    '--output', str(ROOT / cfg.get('frontier_output', 'runs/frontier-initialization'))])
     state = {}
-    try:
-        while proc.poll() is None:
-            maintain_services(services, state)
-            write_json(DIRECTORY / 'frontier-services-watch.json', state)
-            time.sleep(20)
-        if proc.returncode:
-            raise RuntimeError('Frontier collection incomplete; preserve missingness and repair before training')
-    finally:
-        stop_inference()
+    while proc.poll() is None:
+        maintain_services(services, state)
+        write_json(DIRECTORY / 'frontier-services-watch.json', state)
+        time.sleep(20)
+    code = proc.poll()
+    stop_inference()
+    if code:
+        raise RuntimeError('Frontier collection incomplete; preserve missingness and repair before training')
 
 
 def original_grpo():
-    stop_inference()
-    capacity = infrastructure_start()
-    cfg = json.loads(CONFIG.read_text())
-    # Pin the selected budget/config before launching the trainer.
-    source_config = ROOT / cfg['training_config']
-    import yaml
-    effective = yaml.safe_load(source_config.read_text())
-    effective['train']['concurrency'] = capacity
-    content = yaml.safe_dump(effective, sort_keys=False).encode()
-    pinned = DIRECTORY / ('training-config-' + hashlib.sha256(content).hexdigest()[:12] + '.yaml')
-    if not pinned.exists():
-        pinned.write_bytes(content)
-    cfg['training_config'] = str(pinned)
-    write_json(DIRECTORY / 'training-provenance.json', {
-        'created_at_utc': now(), 'config': str(pinned), 'config_sha256': hashlib.sha256(pinned.read_bytes()).hexdigest(),
-        'upstream': json.loads((ROOT / 'configs/sources.lock.json').read_text())['upstream'],
-        'source_commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
-        'initial_rates_sha256': hashlib.sha256((ROOT / 'configs/initial_pass_rate.osworld-rl.json').read_bytes()).hexdigest(),
-        'adaptations': {**cfg['adaptations'], 'environment_concurrency': capacity,
-                        'secondary_worker': json.loads((DIRECTORY / 'secondary-worker-selection.json').read_text())},
-        'algorithm_changes_enabled': False})
-    call([PYTHON, str(ROOT / 'scripts/preflight_rl.py'), '--config', cfg['training_config'], '--gpus', '0,1,2,3,4,5,6,7'])
-    command = [PYTHON, str(ROOT / 'scripts/launch_local_rl.py'), '--config', cfg['training_config'],
-               '--gpus', '0,1,2,3,4,5,6,7', '--run-name', 'original-grpo-worker1',
-               '--save-final', '--report', 'reports/original-grpo-training.json']
-    proc = subprocess.Popen(command, cwd=ROOT)
+    cfg = configuration()
+    run_name = cfg.get('run_name', 'original-grpo-worker1')
+    proc = existing_job('training')
+    if proc is None:
+        stop_inference()
+        capacity = infrastructure_start()
+        cfg = json.loads(CONFIG.read_text())
+        # Pin the selected budget/config before launching the trainer.
+        source_config = ROOT / cfg['training_config']
+        import yaml
+        effective = yaml.safe_load(source_config.read_text())
+        effective['train']['concurrency'] = capacity
+        content = yaml.safe_dump(effective, sort_keys=False).encode()
+        pinned = DIRECTORY / ('training-config-' + hashlib.sha256(content).hexdigest()[:12] + '.yaml')
+        if not pinned.exists():
+            pinned.write_bytes(content)
+        cfg['training_config'] = str(pinned)
+        write_json(DIRECTORY / 'training-provenance.json', {
+            'created_at_utc': now(), 'config': str(pinned), 'config_sha256': hashlib.sha256(pinned.read_bytes()).hexdigest(),
+            'upstream': json.loads((ROOT / 'configs/sources.lock.json').read_text())['upstream'],
+            'source_commit': subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
+            'initial_rates_sha256': hashlib.sha256((ROOT / cfg.get('rates_file', 'configs/initial_pass_rate.osworld-rl.json')).read_bytes()).hexdigest(),
+            'adaptations': {**cfg['adaptations'], 'environment_concurrency': capacity,
+                            'secondary_worker': json.loads((DIRECTORY / 'secondary-worker-selection.json').read_text())},
+            'algorithm_changes_enabled': False})
+        call([PYTHON, str(ROOT / 'scripts/preflight_rl.py'), '--config', cfg['training_config'], '--gpus', '0,1,2,3,4,5,6,7'])
+        command = [PYTHON, str(ROOT / 'scripts/launch_local_rl.py'), '--config', cfg['training_config'],
+                   '--gpus', '0,1,2,3,4,5,6,7', '--run-name', run_name,
+                   '--save-final', '--report', 'reports/original-grpo-training.json']
+        proc = start_job('training', command)
     started = time.time()
     progress = {}
-    marker = ROOT / 'runs/checkpoints/thudm-scalecua-osworld/original-grpo-worker1/latest_checkpointed_iteration.txt'
+    marker = ROOT / 'runs/checkpoints/thudm-scalecua-osworld' / run_name / 'latest_checkpointed_iteration.txt'
     while proc.poll() is None:
         rows = []
-        for path in (ROOT / 'runs/metrics/original-grpo-worker1').glob('*/original-grpo-worker1/train_metrics.jsonl'):
+        for path in (ROOT / 'runs/metrics' / run_name).glob('*/' + run_name + '/train_metrics.jsonl'):
             for line in path.read_text().splitlines():
                 try:
                     rows.append(json.loads(line))
@@ -290,15 +374,16 @@ def original_grpo():
                     'algorithm': 'Original GRPO with Frontier; no TA-GRPO or critic changes'}
         write_json(ROOT / 'reports/original-grpo-progress.json', progress)
         time.sleep(30)
-    progress.update(updated_at_utc=now(), status='completed' if proc.returncode == 0 else 'failed',
-                    exit_code=proc.returncode, elapsed_hours=(time.time() - started) / 3600)
+    progress.update(updated_at_utc=now(), status='completed' if proc.poll() == 0 else 'failed',
+                    exit_code=proc.poll(), elapsed_hours=(time.time() - started) / 3600)
     write_json(ROOT / 'reports/original-grpo-progress.json', progress)
-    if proc.returncode:
-        raise RuntimeError(f'Original GRPO trainer exited with code {proc.returncode}; checkpoint resume is enabled')
+    if proc.poll():
+        raise RuntimeError(f'Original GRPO trainer exited with code {proc.poll()}; checkpoint resume is enabled')
 
 
 def register_trained_checkpoint():
-    root = ROOT / 'runs/checkpoints/thudm-scalecua-osworld/original-grpo-worker1'
+    run_name = configuration().get('run_name', 'original-grpo-worker1')
+    root = ROOT / 'runs/checkpoints/thudm-scalecua-osworld' / run_name
     marker = root / 'latest_checkpointed_iteration.txt'
     step = int(marker.read_text().strip())
     model = root / f'global_step_{step}/huggingface'
@@ -319,18 +404,24 @@ def register_trained_checkpoint():
     manifest = {'revision': identity, 'training_step': step, 'model_dir': str(model), 'shards': shards,
                 'shard_sha256': hashes, 'identity_scope': 'SHA256 of the ordered full shard hashes'}
     write_json(ROOT / 'reports/reproduced-rl-model-manifest.json', manifest)
-    write_json(ROOT / 'runs/reproduced-rl-model.json', {'model_id': 'local/original-grpo-worker1', 'model_revision': identity,
+    write_json(ROOT / 'runs/reproduced-rl-model.json', {'model_id': 'local/' + run_name, 'model_revision': identity,
                'model_dir': str(model), 'served_model_name': 'scalecua-qwen3-vl-8b-reproduced-rl', 'port': 18120,
                'state_file': 'reproduced-rl-inference-service.json', 'manifest_file': 'reproduced-rl-model-manifest.json'})
 
 
 def main():
+    global CONFIG, DIRECTORY
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('stage', choices=['released_rl_reference', 'frontier_initialization', 'original_grpo', 'reproduced_checkpoint_evaluation'])
+    parser.add_argument('--config', type=Path, default=CONFIG)
     args = parser.parse_args()
+    CONFIG = args.config
+    DIRECTORY = ROOT / configuration().get('state_directory', 'runs/original-rl-pipeline')
     if socket.gethostname() != 'research-a-worker-1':
         parser.error('Original RL pipeline is scoped to worker-1')
     DIRECTORY.mkdir(exist_ok=True)
+    lease = (DIRECTORY / (args.stage + '.lock')).open('a')
+    fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
     receipt = {'stage': args.stage, 'started_at_utc': now(), 'exit_code': 1}
     try:
         if args.stage == 'released_rl_reference':

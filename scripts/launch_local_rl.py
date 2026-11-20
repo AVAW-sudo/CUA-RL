@@ -87,19 +87,26 @@ try:
     rows = [json.loads(line) for log in logs for line in log.read_text().splitlines() if line.strip()]
     updates = [row for row in rows if 'actor/grad_norm' in row]
     valid_updates = bool(updates) and all(math.isfinite(float(row['actor/grad_norm'])) for row in updates)
-    report = {'passed': valid_updates, 'updates': updates, 'run_name': config['run_name'],
+    nonzero_updates = sum(float(row['actor/grad_norm']) > 0 for row in updates)
+    report = {'passed': valid_updates and nonzero_updates > 0, 'execution_completed': True, 'updates': updates, 'run_name': config['run_name'],
               'scope': 'Original algorithm with explicitly recorded public-agent and TCG resource adaptations',
               'physical_gpus': gpu_ids,
               'checkpoint_root': str(Path(config['save_path']) / config['project_name'] / config['run_name']),
               'checkpoint_saved': bool(list((Path(config['save_path']) / config['project_name'] / config['run_name']).glob('global_step_*'))),
               'metrics_files': [str(log) for log in logs], 'config': args.config,
-              'nonzero_gradient_updates': sum(float(row['actor/grad_norm']) > 0 for row in updates),
+              'nonzero_gradient_updates': nonzero_updates,
               'effective_group_fraction': [row.get('rl/overall/effective_uids') for row in updates]}
     report_path.write_text(json.dumps(report, indent=2) + '\n')
     assert valid_updates, 'Trainer returned without an actor update with finite gradient norm'
+    if not nonzero_updates:
+        raise RuntimeError('Trainer completed but every gradient was zero; this is not an effective learning baseline')
 except Exception as exc:
-    report_path.write_text(json.dumps(
-        {'passed': False, 'run_name': config['run_name'], 'error': str(exc), 'scope': 'Local infrastructure smoke'}, indent=2) + '\n')
+    failure = {'passed': False, 'run_name': config['run_name'], 'error': str(exc), 'scope': 'Original GRPO execution'}
+    if report_path.exists():
+        previous = json.loads(report_path.read_text())
+        if previous.get('run_name') == config['run_name']:
+            failure = {**previous, **failure}
+    report_path.write_text(json.dumps(failure, indent=2) + '\n')
     raise
 finally:
     ray.shutdown()

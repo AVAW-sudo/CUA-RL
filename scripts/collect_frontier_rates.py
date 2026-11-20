@@ -24,15 +24,15 @@ async def collect_all(args):
     spec.loader.exec_module(upstream)
     primary = json.loads((ROOT / 'runs/inference-service.json').read_text())
     services = load_services(args.service_pool, primary)
-    indices = json.loads((ROOT / 'configs/rl-indices.json').read_text())
+    indices = json.loads(args.indices.read_text())
     directory = args.output.resolve()
     directory.mkdir(parents=True, exist_ok=True)
-    protocol = {'model_revision': primary['model_revision'], 'tasks': len(indices), 'runs_per_task': 4,
+    protocol = {'model_revision': primary['model_revision'], 'tasks': len(indices), 'task_name': args.task_name, 'runs_per_task': 4,
                 'temperature': 0.8, 'max_tokens': 4096, 'max_turns': 50, 'max_total_len': 30000,
                 'generation_transport_retries': 1,
                 'images_to_keep': 5, 'min_removal_threshold': 5, 'agent_version': 'scalecua_osworld',
                 'agent_note': 'Released public ScaleCUA agent adapter; anthropic_rl is absent from the pinned public source.',
-                'indices_sha256': hashlib.sha256((ROOT / 'configs/rl-indices.json').read_bytes()).hexdigest(),
+                'indices_sha256': hashlib.sha256(args.indices.read_bytes()).hexdigest(),
                 'top_p': 1.0, 'top_k': -1,
                 'services': [{k: s.get(k) for k in ['model_revision', 'model_dir', 'served_model_name',
                                                   'base_url', 'command', 'runtime_compatibility']} for s in services]}
@@ -78,7 +78,7 @@ async def collect_all(args):
                 write_json(attempt, record)
                 try:
                     initialized = time.monotonic()
-                    data, sid = await rpc('/start_sample', {'name': 'osworld-rl', 'index': -1,
+                    data, sid = await rpc('/start_sample', {'name': args.task_name, 'index': -1,
                         'custom_task': {'index': index, 'with_record': False, 'image_width': 1280,
                                         'image_height': 720, 'screen_width': 1920, 'screen_height': 1080,
                                         'agent_version': 'scalecua_osworld', 'env_version': 'anthropic',
@@ -166,10 +166,10 @@ async def collect_all(args):
     rows = [json.loads(path.read_text()) for path in sorted(directory.glob('*/*/result.json'))]
     (directory / 'results.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
     rates = collect(rows, indices, primary['served_model_name'])
-    target = ROOT / 'configs/initial_pass_rate.osworld-rl.json'
-    if target.exists() and json.loads(target.read_text()) != {'osworld-rl': rates}:
+    target = args.rates_output
+    if target.exists() and json.loads(target.read_text()) != {args.task_name: rates}:
         raise ValueError('Refusing to replace existing Frontier rates with different results')
-    write_json(target, {'osworld-rl': rates})
+    write_json(target, {args.task_name: rates})
     write_json(target.with_suffix('.audit.json'), {'protocol': protocol, 'episodes': len(rows),
                                                  'results_sha256': hashlib.sha256((directory / 'results.jsonl').read_bytes()).hexdigest()})
 
@@ -177,6 +177,9 @@ async def collect_all(args):
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--service-pool', type=Path, required=True)
+    p.add_argument('--indices', type=Path, default=ROOT / 'configs/rl-indices.json')
+    p.add_argument('--task-name', default='osworld-rl')
+    p.add_argument('--rates-output', type=Path, default=ROOT / 'configs/initial_pass_rate.osworld-rl.json')
     p.add_argument('--controller', default='http://127.0.0.1:18520/api')
     p.add_argument('--concurrency', type=int, default=32)
     p.add_argument('--max-attempts', type=int, default=3)

@@ -173,7 +173,7 @@ GitHub 环境调研及来源保存在 `reports/environment-acceleration-survey.j
 
 `configs/qwen3vl-osworld-local-1step.yaml` 是额外的 6 卡连通性配置：batch=1、n=2、1 次更新、15 步上限、关闭 Frontier、使用本地 eval-agent 适配器；与正式 baseline 分开记录。未适配的原配置仍被缺失 `anthropic_rl` 的检查阻止；上述自动流程显式记录了公开 agent 替代，且必须先完成 Frontier rates 才能开始训练。
 
-该 15 步检查的两个 reward 均为 `-0.2`，因此虽然链路通过，梯度为零，不能算有效学习。随后使用 `configs/qwen3vl-osworld-local-signal-1step.yaml`，恢复 50 步上限和 30,000 训练长度，采集四条轨迹，得到 `[1, -0.2, 1, 0]`，完成了非零梯度更新。四条中两条成功只是同一任务上的采样结果，不是 OSWorld 总分，也不能证明更新后的策略更强。本次 step 约 1,276 秒，其中采样与环境约 1,226 秒、reference 前向约 18.6 秒、actor 反传及 step 约 31.0 秒。TCG 是当前主要吞吐限制。
+该 15 步检查的两个 reward 均为 `-0.2`，因此虽然链路通过，梯度为零，不能算有效学习。随后使用 `configs/qwen3vl-osworld-local-signal-1step.yaml`，恢复 50 步上限和 30,000 训练长度，采集四条轨迹，得到 `[1, -0.2, 1, 0]`，完成了非零梯度更新。四条中两条成功只是同一任务上的采样结果，不是 OSWorld 总分，也不能证明更新后的策略更强。本次 step 约 1,276 秒，其中采样与环境约 1,226 秒、reference 前向约 18.6 秒、actor 反传及 step 约 31.0 秒。采样与环境阶段占主要时间；该阶段同时包含模型推理和环境交互，不能把整段耗时都归因于 TCG。
 
 检查结束后已停止本项目的 controller、桌面 worker 和所有 QEMU VM，释放六卡训练进程；SFT 服务单独恢复。复跑在线检查前，先启动 controller 与 osworld-worker，再停止自己的 SFT 服务。清理核验见 `reports/cleanup.json`。
 
@@ -230,3 +230,75 @@ python scripts/worker_exec.py worker-1 -- /aigc/aigc_research/wangjing/ENV/cua-r
 要复跑四轨迹非零信号检查，给 launcher 加上 `--config configs/qwen3vl-osworld-local-signal-1step.yaml --report reports/smoke-online-rl-signal.json`。这会从原 SFT 重新开始，不续训本次临时权重。采样是随机的，新的批次不保证出现同样的奖励分布。
 
 VM 来源：`xlangai/ubuntu_osworld` @ `a5d9c3eaae98eebf6e3a0beb84e7e47cf72ae133`，`Ubuntu.qcow2.zip` 解压至 `data/osworld-vm/Ubuntu.qcow2`。上游 `osworld_env/README.md` 明确要求将该公开磁盘重命名或链接为 `Ubuntu-modified.qcow2`；本地适配器采用同一文件名映射。当前运行使用 TCG 软件模拟；将来有设备权限时可显式选择 KVM。
+
+
+## 环境加速实测（2026-11-20）
+
+按用户授权，在 worker-0 使用 CPU 做独立工程实验，额外 GPU 占用为 0；worker-1 的正式 SFT 测评和原版 GRPO 自动队列继续运行。实验没有修改正式 provider、模型、任务列表、采样参数或评分结果。汇总入口为 `reports/environment-acceleration-report.html` / `.json`，原始证据和失败尝试均保留。报告不将基础设施检查称为端到端训练加速。
+
+- **同镜像磁盘对照**：`benchmark_environment_runtime.py` 将冻结 qcow2 复制到节点本地 `/tmp`，校验双方 SHA256，各镜像交替执行 3 轮共享盘 / 本地盘冷启动。OSWorld 已测共享盘冷启动中位 109.02 秒、本地盘 95.39 秒。主机页缓存未清空，其他作业未暂停；第二个诊断 VM 和用户态桌面测试的并行负载也已记录，不能当作隔离硬件测试。
+- **完整快照**：同脚本在每个本地盘 VM 中保存 RAM、设备和磁盘状态，执行 3 次 `loadvm`，检查截图、控制、文件和鼠标状态。仅有 qcow2 overlay 不能跳过开机。`check_snapshot_task_reset.py` 进一步用原 task setup/verifier 检查冷启动与三次恢复的状态一致性；测试动作由固定脚本提供，结果不并入 SFT 分数。早期 OSWorld 脚本在终端尚未就绪时输入失败，改正等待后原 verifier 的 0→1 与恢复后归零均通过；失败记录保留。
+- **无 KVM 用户态桌面**：隔离安装 udocker 1.3.17，使用 PRoot P1 执行 GHCR 的 Lite.OSWorld 镜像，固定 digest `sha256:2d51f12e1bff4a8621c3a810cd5399c2c678aafae0db310f757c8c240cf954b1`。三轮 Xvnc + GNOME + 测试窗口就绪约 10.57 秒；30 次 HTTP PNG 截图 + 新 Python 进程控制检查约 0.22 秒/次。LibreOffice Writer 的真实键鼠输入、保存 ODT 和内容校验另有通过记录。镜像下载与解包不计入启动时间；桌面配置与测试 HTTP 服务不同，不能将这个速度比直接当作原 benchmark 加速比。
+- **现有轨迹剖析**：`profile_evaluation_logs.py` 只读有效结果日志，不重新调用模型。初次统计的 358 条 OSWorld 日志中，11,157 次环境动作中位 3.61 秒，10,799 个动作间隙中位 2.289 秒，启动+setup 中位 115.22 秒。动作间隙含推理和客户端处理，环境动作含等待和截图，均不是 GPU 单独耗时。两组 ScienceBoard 的快照统计和来源日志在同一报告中。
+
+PRoot 不提供足够的隔离来托管任意模型生成的动作；本实验仅执行可信固定脚本，未挂入宿主 home、GPU 设备或系统 D-Bus，仅映射 `/proc` 和 null/zero/random 等最小设备。当前没有可用 Docker 服务；用户命名空间能创建，但实际 tmpfs 挂载失败。原生 GNOME 路线证明用户态执行可行，仍需解决隔离、应用版本和完整任务兼容性后才能考虑正式 rollout。桌面退出时收回其进程组，并以 subreaper 回收双重 fork 的子进程，避免长时间实验积累僵尸进程。
+
+近期优先方向为**同镜像 warm pool + 完整快照**；启用到正式训练前还需多应用、并发和原模型 rollout 对照。目前没有将实验后端自动写入正式配置。假设每条轨迹节约 100 秒、48 环境持续满载，8,196 条 Frontier 预跑理论可省约 4.74 小时；这是重置开销的条件估算，不是已测端到端收益。
+
+```bash
+# 只读汇总现有证据
+/aigc/aigc_research/wangjing/ENV/cua-rl-osworld/bin/python scripts/profile_evaluation_logs.py
+/aigc/aigc_research/wangjing/ENV/cua-rl-osworld/bin/python scripts/write_environment_report.py
+
+# 原镜像存储/快照对照：只允许 worker-0，要求新 report 路径
+python scripts/worker_exec.py worker-0 -- /aigc/aigc_research/wangjing/ENV/cua-rl-osworld/bin/python /aigc/aigc_research/wangjing/CODE/CUA-RL/scripts/benchmark_environment_runtime.py --report /aigc/aigc_research/wangjing/CODE/CUA-RL/reports/environment-runtime-repeat.json
+
+# 已准备的用户态镜像：脚本验证其 manifest，使用新输出目录
+python scripts/worker_exec.py worker-0 -- /aigc/aigc_research/wangjing/ENV/cua-rl-osworld/bin/python /aigc/aigc_research/wangjing/CODE/CUA-RL/scripts/probe_userspace_desktop.py --udocker /tmp/cua-rl-udocker-1000/venv/bin/udocker --repository /tmp/cua-rl-udocker-1000/repository --container-id 01ffb0c6-2cd7-3d4d-8cd7-3d2fc6250b4a --gnome --office --repeats 3 --report /aigc/aigc_research/wangjing/CODE/CUA-RL/reports/userspace-repeat.json
+```
+
+GitHub 调研覆盖 13 个上游入口，记录在 `reports/environment-acceleration-survey.json`。最相关的是 [QEMU 完整快照](https://github.com/qemu/qemu/blob/master/docs/system/images.rst)、[ARPO 分布式环境](https://github.com/JIA-Lab-research/ARPO)、[Lite.OSWorld](https://github.com/cua-lite/cua-lite/blob/main/lite/gym/envs/lite/osworld/README.md)、[Lite.ScaleCUA](https://github.com/cua-lite/cua-lite/blob/main/lite/gym/envs/lite/scalecua/README.md) 和 [udocker](https://github.com/indigo-dc/udocker)。Lite.ScaleCUA 导入 2,049 条公开 RL 任务，但有不支持项筛选且未迁移 ScienceBoard/原训练器；不能用筛选后的分数替代原版 361/169 全集。常规本地 Firecracker 仍依赖 KVM；OpenEnv 等接口包装本身不消除 TCG 成本。
+
+## 2026-11-20 小规模原版 GRPO 与无人值守恢复
+
+当前自动队列使用 `configs/original-rl-pilot-pipeline.json`。完整 2,049 题配置
+`configs/original-rl-pipeline.json` 保留但关闭，避免两个训练队列争用 worker-1。
+本次是 **64 题的小规模 original-GRPO pilot**，不是完整论文复现：固定哈希、按应用轮转选题，
+跨应用相同 seed 去重；每题 4 次 SFT Frontier 初始化，25 个更新机会。batch=16、n=8、
+GRPO loss、Frontier、学习率、50 轮上限和视觉历史设置保持原版；每 5 步存 checkpoint。
+有效梯度步数另行统计，全部零梯度不能记作有效学习成功。
+
+训练后在预先固定的 OSWorld 30 题、ScienceBoard 20 题上测评，再测 released RL reference。
+SFT 对照从已完成全量测评抽取相同题目，不重新挑采样。OSWorld 30 题 seed 与本次训练池不重叠；
+不声称与 SFT 预训练数据隔离。选择清单、哈希及范围在 `configs/original-pilot/manifest.json`。
+
+环境优先采用原始 OSWorld 镜像和完整 QEMU RAM/设备/磁盘快照；启用必须有同节点、同实现哈希、
+匹配并发数的通过报告。初次启动冷开机，之后复用；每次租约有独立 ID，旧租约不能结束新任务。
+恢复失败则销毁该 VM，下次冷启动。反复 `loadvm` 会让 guest 时钟回退，已增加任务 setup 前的
+宿主机 epoch 校准。正式 SFT/训练后 benchmark 仍用其冻结的冷启动评测协议。
+
+监督层不依赖聊天会话：`pipeline_service.py` 的独立 guard 重启退出的 watchdog，
+watchdog 校验 PID、启动时间、boot ID、心跳和文件锁，只重启监督进程。
+采样器/训练器由 `persistent_job.py` 独立记录进程和退出回执；阶段恢复时接管已有任务，
+不会因父进程消失就重复拉起 GPU 训练。失败命令有界重试、训练从已保存 checkpoint 恢复；
+不将缺失退出回执当成功，不给缺测 episode 编造分数。整个节点/所有监督层同时丢失仍不能等同于
+进程级恢复，必须重新启动入口；已有共享存储产物保留。
+
+```bash
+# worker-1 上的幂等启动入口（无需 tmux；stdin 断开不影响运行）
+python scripts/worker_exec.py worker-1 -- \
+  /aigc/aigc_research/wangjing/ENV/cua-rl-osworld/bin/python \
+  /aigc/aigc_research/wangjing/CODE/CUA-RL/scripts/pipeline_service.py
+
+# 从共享目录查看监督状态和实际更新步数
+cat runs/original-rl-pilot-pipeline/state.json
+cat runs/original-rl-pilot-pipeline/watchdog.json
+cat reports/original-grpo-progress.json
+```
+
+报告入口：`reports/sft-evaluation-report.html`（全量 SFT，保留缺测上下界）、
+`reports/environment-acceleration-report.html`（环境实验，失败记录也保留）、
+`reports/original-grpo-pilot-comparison.html`（固定子集对照）。
+`reports/watchdog-recovery-validation.json` 记录杀掉监督进程后接管同一个底层命令、仅启动一次的实测。
+用户态 PRoot/GNOME 仅用于可信脚本研究：浏览器、Writer、Calc 三轮验证不能代替原 benchmark
+的隔离、应用兼容性和 verifier 等价性，暂不承载模型自由动作。
