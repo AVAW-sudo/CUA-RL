@@ -9,3 +9,4 @@ __pycache__/
 reports/*
 !reports/.gitkeep
 archive/
+configs/initial_pass_rate.*.json

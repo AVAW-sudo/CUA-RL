@@ -16,12 +16,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("service", choices=["controller", "osworld-worker"])
     parser.add_argument("action", choices=["start", "stop"])
+    parser.add_argument('--config', default='configs/osworld-local-worker.yaml')
+    parser.add_argument('--task-name', default='osworld-local-smoke')
+    parser.add_argument('--controller', default='http://127.0.0.1:18520/api')
     args = parser.parse_args()
-    if socket.gethostname() != "research-a-worker-1":
-        parser.error("Local bring-up is scoped to worker-1")
-    statefile = ROOT / "runs" / (args.service + "-service.json")
+    host = socket.gethostname()
+    if host not in {'research-a-worker-0', 'research-a-worker-1'}:
+        parser.error('Services are scoped to worker-0/1')
+    secondary = host == 'research-a-worker-0'
+    if secondary and args.service != 'osworld-worker':
+        parser.error('The shared controller belongs on worker-1')
+    suffix = '-worker0' if secondary else ''
+    statefile = ROOT / "runs" / (args.service + suffix + "-service.json")
     if statefile.exists():
         state = json.loads(statefile.read_text())
+        if state['hostname'] != host:
+            parser.error('Service state belongs to a different worker')
         proc = Path(f"/proc/{state['pid']}/cmdline")
         alive = proc.exists() and state["identity"] in proc.read_bytes().decode(errors="replace")
         if args.action == "stop":
@@ -59,19 +69,21 @@ def main():
         cmd = [identity, "controller", "--port", str(port), "--host", "0.0.0.0", "--dashboard=false", "--long-timeout"]
     else:
         port = 18521
-        identity = "configs/osworld-local-worker.yaml"
+        identity = args.config
         env["PYTHONPATH"] = ":".join(str(ROOT / p) for p in ["scripts", "SCALE-CUA/osworld_eval", "SCALE-CUA/osworld_env/worker"])
         env["OSWORLD_HELPER_ASSETS"] = str(ROOT / "SCALE-CUA/osworld_env/worker/extra")
         env["NO_PROXY"] = "localhost,127.0.0.0/8,127.0.0.1,.training.svc.cluster.local"
         env["no_proxy"] = env["NO_PROXY"]
         cwd = ROOT / "SCALE-CUA/osworld_eval"
+        self_url = (f'http://{host}.job-research-a.training.svc.cluster.local:{port}/api'
+                    if secondary else f'http://127.0.0.1:{port}/api')
         cmd = ["/aigc/aigc_research/wangjing/ENV/cua-rl-osworld/bin/python", "-m", "agentrl.worker",
-               "-c", str(ROOT / identity), "--controller", "http://127.0.0.1:18520/api", "--self", "http://127.0.0.1:18521/api",
-               "--host", "127.0.0.1", "--port", str(port), "osworld-local-smoke"]
+               "-c", str(ROOT / identity), "--controller", args.controller, "--self", self_url,
+               "--host", "0.0.0.0" if secondary else "127.0.0.1", "--port", str(port), args.task_name]
     with socket.socket() as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("127.0.0.1", port))
-    logfile = ROOT / "runs" / (args.service + ".log")
+    logfile = ROOT / "runs" / (args.service + suffix + ".log")
     with logfile.open("ab", buffering=0) as log:
         process = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
     state = {"pid": process.pid, "hostname": socket.gethostname(), "port": port, "identity": identity, "command": cmd, "log": str(logfile)}

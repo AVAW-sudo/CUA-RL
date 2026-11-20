@@ -5,6 +5,7 @@ Task subsets are integration samples, never full benchmark scores. Failed tasks
 are retained. This launcher does not train or change checkpoint weights.
 """
 import argparse
+from checkpoint_specs import CHECKPOINTS, checkpoint_spec
 import datetime
 import importlib
 import hashlib
@@ -74,7 +75,7 @@ def worker_init():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--benchmark', choices=['osworld', 'scienceboard'], default='osworld')
-    parser.add_argument('--checkpoint', choices=['osworld-sft', 'scienceboard-sft'], default='osworld-sft')
+    parser.add_argument('--checkpoint', choices=CHECKPOINTS, default='osworld-sft')
     parser.add_argument('--accelerator', choices=['tcg', 'kvm'], default='tcg')
     parser.add_argument('--workers', type=int, default=2)
     parser.add_argument('--cpus', type=int, default=2)
@@ -90,14 +91,11 @@ def main():
     args = parser.parse_args()
     cfg = json.loads((ROOT / 'configs/paths.json').read_text())
     lock = json.loads((ROOT / 'configs/sources.lock.json').read_text())
-    checkpoint_spec = lock['sft_model']
+    selected_checkpoint = checkpoint_spec(ROOT, args.checkpoint)
+    checkpoint_source = {'repo_id': selected_checkpoint['model_id'], 'revision': selected_checkpoint['model_revision']}
+    cfg.update(selected_checkpoint)
     service_path = ROOT / 'runs/inference-service.json'
-    if args.checkpoint == 'scienceboard-sft':
-        checkpoint_spec = lock['scienceboard_sft_model']
-        cfg.update(model_id=checkpoint_spec['repo_id'], model_revision=checkpoint_spec['revision'],
-                   model_dir=str(Path(cfg['model_dir']).with_name('THUDM-ScaleCUA-qwen3-vl-scienceboard-sft')),
-                   served_model_name='scalecua-qwen3-vl-8b-scienceboard-sft')
-        service_path = ROOT / 'runs/scienceboard-inference-service.json'
+    service_path = ROOT / 'runs' / selected_checkpoint['state_file']
     if socket.gethostname() not in cfg['workers']:
         parser.error('Run on worker-0/1')
     if not 1 <= args.workers <= 8:
@@ -166,7 +164,7 @@ def main():
     upstream_args = runner.config()
     generation_path = Path(cfg['model_dir']) / 'generation_config.json'
     manifest = {'run_id': run_id, 'pid': os.getpid(), 'status': 'running', 'hostname': socket.gethostname(),
-                'checkpoint': checkpoint_spec, 'upstream': lock['upstream'], 'accelerator': args.accelerator,
+                'checkpoint': checkpoint_source, 'upstream': lock['upstream'], 'accelerator': args.accelerator,
                 'recording_mode': args.recording_mode,
                 'proxy_policy': args.proxy_policy,
                 'vm_resources': {'cpus': args.cpus, 'memory_mb': args.memory_mb},

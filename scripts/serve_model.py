@@ -10,6 +10,7 @@ import re
 import signal
 import socket
 import subprocess
+from checkpoint_specs import CHECKPOINTS, checkpoint_spec
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "runs/inference-service.json"
@@ -19,7 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["start", "stop"])
     parser.add_argument("--gpus", default="0")
-    parser.add_argument('--checkpoint', choices=['osworld-sft', 'scienceboard-sft'], default='osworld-sft')
+    parser.add_argument('--checkpoint', choices=CHECKPOINTS, default='osworld-sft')
     parser.add_argument('--replica', help='Independent replica name; keeps the primary service state intact')
     parser.add_argument('--port', type=int, help='Explicit port for an independent replica')
     parser.add_argument('--max-model-len', type=int, default=40960)
@@ -33,14 +34,11 @@ def main():
     state_path = STATE
     manifest = ROOT / 'reports/model_manifest.json'
     log_name = 'inference-thudm-sft.log'
-    if args.checkpoint == 'scienceboard-sft':
-        spec = json.loads((ROOT / 'configs/sources.lock.json').read_text())['scienceboard_sft_model']
-        cfg.update(model_id=spec['repo_id'], model_revision=spec['revision'],
-                   model_dir=str(Path(cfg['model_dir']).with_name('THUDM-ScaleCUA-qwen3-vl-scienceboard-sft')),
-                   served_model_name='scalecua-qwen3-vl-8b-scienceboard-sft', port=18081)
-        state_path = ROOT / 'runs/scienceboard-inference-service.json'
-        manifest = ROOT / 'reports/scienceboard-sft-model-manifest.json'
-        log_name = 'inference-scienceboard-sft.log'
+    spec = checkpoint_spec(ROOT, args.checkpoint)
+    cfg.update(spec)
+    state_path = ROOT / 'runs' / spec['state_file']
+    manifest = ROOT / 'reports' / spec['manifest_file']
+    log_name = 'inference-' + args.checkpoint + '.log'
     if args.replica:
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,31}', args.replica) or args.port is None:
             parser.error('A replica requires a short lowercase name and an explicit --port')

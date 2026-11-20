@@ -126,13 +126,15 @@ ScienceBoard SFT 发布文件把 `extra_special_tokens` 存为列表，而当前
 
 `resize_benchmark.py --run-dir <campaign> --workers 8 --concurrency-report <report>` 可在原节点等待已启动的题目自然完成后更换调度器，保留所有有效结果，包括零分；不重跑已评分题目。迁移记录保存为队列内的 `resize-*.json`。旧调度器不支持排空时，只临时暂停调度进程，独立评测子进程继续运行；等待超时或异常会恢复原调度器。新版调度器也支持 `SIGUSR1` 停止领取新任务并等待当前任务完成。
 
-当前结果入口为 `reports/sft-benchmark-results.json` / `.csv`，运行期间每 30 秒更新；每个队列的 `summary.json` 和 `campaign.json` 保留分应用统计、逐题状态和全部尝试。总体成功率定义为 score=1 的任务数 / 完整题数；平均分定义为 verifier score 之和 / 完整题数。未全部获得有效结果时，两项正式指标为 null，不把缺题、超时或判分传输故障静默算成 0。连续三个异常会暂停队列供检查；有效 score=0 不会被续跑机制重试。异常是否由模型关闭应用引起仍需结合轨迹审计，不能一概认定为平台故障。
+当前结果入口为 `reports/sft-benchmark-results.json` / `.csv`；每个队列的 `summary.json` 和 `campaign.json` 保留分应用统计、逐题状态和全部尝试。总体成功率定义为 score=1 的任务数 / 完整题数；平均分定义为 verifier score 之和 / 完整题数。未全部获得有效结果时，两项正式指标为 null，不把缺题、超时或判分传输故障静默算成 0。
+
+新版协调器取消了“连续三个异常暂停整个队列”：仅对明确且零动作的初始化失败自动恢复，包含历史尝试在内最多 3 次，退避后排到其他任务后面。有效零分不重跑；有动作的异常保留原轨迹和 VM overlay 供补判；没有证据的异常不会自动重新采样。纯 `{"Error": ...}` 诊断行不算模型动作，其他或损坏的轨迹行保守地视作已有动作。副本健康检查失败时暂避该 endpoint，其他副本继续；监督进程只恢复本项目的服务，重启保持原 checkpoint 和推理参数。启动 VM 默认间隔 1 秒，避免同时启动冲击。异常由模型关闭应用引起的情况仍需审计。
 
 ```bash
 # 查看当前统计（不启动或修改评测）
 python scripts/summarize_benchmarks.py
 
-# 同节点续跑：必须沿用原协议；只有显式加 --retry-errors 才重试异常题
+# 同节点续跑：沿用原协议，自动恢复明确的零动作初始化失败
 python scripts/worker_exec.py worker-0 -- /aigc/aigc_research/wangjing/ENV/cua-rl-osworld/bin/python /aigc/aigc_research/wangjing/CODE/CUA-RL/scripts/run_benchmark.py start --benchmark osworld --checkpoint osworld-sft --workers 4 --proxy-policy direct --run-dir /aigc/aigc_research/wangjing/CODE/CUA-RL/runs/benchmarks/osworld-sft__osworld361-tcg-v3 --resume
 ```
 
@@ -142,6 +144,25 @@ python scripts/worker_exec.py worker-0 -- /aigc/aigc_research/wangjing/ENV/cua-r
 
 `configs/research-splits/` 额外提供 1,691 / 181 / 177 个任务的 train/dev/test 列表，先在全局按基础 `id` 分组，再按应用分层；同一基础任务的所有变体只落在一个集合。它用于后续独立算法开发，**未替换**官方全量复现池，也未自动写入 controller。实际启用时让各 worker 的 `examples_path` 读取 `*-examples.json`（按应用分组的映射），并更换注册任务名；`*-indices.json` 用于客户端过滤。原 loader 已验证实际加载 1,691 / 181 / 177 个任务，见 `reports/research-split-loader.json`。不能在全量复现 checkpoint 上再宣称该划分未见；严格实验需要各方法从相同 SFT 重新开始，并披露 SFT 本身的数据可见性限制。
 
+### SFT 报告与原版 RL 自动接续
+
+`scripts/pipeline_supervisor.py` 在 worker-1 持有独占锁运行，配置为 `configs/original-rl-pipeline.json`，状态及日志在 `runs/original-rl-pipeline/`。现有队列逐个排空后接入新协调器，保留冻结 runtime 和有效结果。监督进程定期检查队列、推理副本和阶段进程；副本按原配置最多重启 3 次，含启动宽限期。阶段异常最多自动恢复两次，错误与每次 receipt 均留档。进程消失但没有 receipt 时先保留子进程与现场，避免重复训练；这类情况仍需工程诊断。
+
+运行期间持续生成 `reports/sft-evaluation-report.html` 和 `.json`。任务全部尝试且有限恢复结束后，报告成为 `final_complete` 或 `final_with_unscored_cases`：后者列出所有缺测题和全分母上下界，精确总分继续为 null。缺测不会伪造为失败，也不会无限卡住后续准备。自动队列按以下次序执行，**未启用 TA-GRPO、critic 或 GAE 改造**：
+
+1. 用固定 revision 的官方发布 RL 权重分别测 OSWorld 361、ScienceBoard 169，得到同环境参考。
+2. 用原始 OSWorld SFT 对公开 2,049 个任务各做 4 次预跑，共 8,196 条，生成 Frontier 初始成功率。逐条持久化、保留终止状态；缺失结果时拒绝生成 rates 或关闭 Frontier。只重试尚未调用模型的初始化故障，最多 3 次。
+3. 原版 GRPO + Frontier 首轮执行 25 个更新步，保存 checkpoint。配置 `qwen3vl-osworld-original-8gpu-25updates.yaml` 与完整配置仅停止边界不同。上游从 step=1 开始、循环 `< max_steps`，因此首轮 max_steps=26、完整配置 max_steps=1000；空 batch 跳步单独报告，不冒充有效梯度更新。保留 batch=16、n=8、lr=3e-6、50 轮、KL=1e-4、冻结 ViT、历史图像 5/5 和原损失。
+4. 测重训 checkpoint，并生成 `reports/sft-and-original-rl-comparison.html` / `.json`。首轮是小预算复现里程碑；完整约 999 个更新步的配置另存，可在后续授权预算下用同一 run name 续跑。
+
+训练使用 worker-1 的 8 张 H200：2 张 rollout、6 张 actor/reference；保存最近两个 checkpoint，并保存最终边界；即使最终 batch 为空，也保留此前已更新的 actor，真实有效更新数另行报告。训练配置、模型权重、Frontier rates 和上游 commit 均记录 hash。公开源码缺少 `anthropic_rl`，当前显式使用发布的 `scalecua_osworld` agent，且环境为 TCG/direct；因此属于记录了这些差异的原算法复现，不能宣称与论文逐项完全等价。
+
+默认每节点 4 vCPU / 8 GiB 的 VM，worker-1 为 32 路。可用 worker-0 CPU 增加 16 路，总计 48 路，**不分配 worker-0 GPU**；启用前要求同镜像/资源的并发验收及跨节点初始化、截图控制都通过，配置或证据不匹配则继续 32 路。`check_remote_worker.py` 是零 GPU 的工程检查，不计 benchmark 或 Frontier 成功率。当前已完成 worker-0 的 32 VM 启动/API 验收：约 215.35 秒全部就绪、请求中位 5.19 秒、全部清理；持续 rollout 吞吐须另测。实际选用容量写入阶段 provenance；collector 逐条记录初始化、推理和环境调用的耗时，供进一步定位瓶颈。
+
+按已完成 359 条 OSWorld episode 平均 7.31 分钟做线性规划，32 路下 Frontier 约 31 小时、25 步采样约 12 小时；48 路理想约 21 / 8 小时。它们不含额外故障、评测和训练开销，也不代表 RL 任务的实测速率。原先四条轨迹的真实优化小跑中，1,276 秒/步有 1,226 秒用于采样与环境，reference 约 18.6 秒、actor 更新约 31 秒；采样计时包含模型推理，不能全部归为 VM 等待。主线保持原始 8B SFT 权重。
+
+GitHub 环境调研及来源保存在 `reports/environment-acceleration-survey.json`。下一步优先比较同一镜像的 GPFS 与本地盘 I/O，再验证 QEMU 完整 RAM/设备/磁盘快照恢复；仅创建 qcow2 overlay 不会省去开机。当前正式队列保持冻结协议。可用于后续快速研究的 [Lite.ScaleCUA](https://github.com/cua-lite/cua-lite/blob/main/lite/gym/envs/lite/scalecua/README.md) 使用 VM-free 桌面，但有不支持任务的过滤规则且不迁移 ScienceBoard，不能把其筛选后的结果当成本轮完整基线。
+
 ## 当前未满足的启动条件
 
 1. **原 agent 缺失**：固定上游代码引用 `mm_agents.anthropic_rl.main.AnthropicRLAgent`，公开目录没有该模块。本地显式新增 `scalecua_osworld` 选项接入已发布 `ScaleCUAOSWorldAgent`，用于连通性验证；不能据此声称完全相同的 RL rollout 协议。正式精确复现需补齐原模块或确认协议等价。
@@ -150,7 +171,7 @@ python scripts/worker_exec.py worker-0 -- /aigc/aigc_research/wangjing/ENV/cua-r
 
 `configs/rl-indices.json` 是全池 2,049 个任务的显式客户端清单。完成四次独立 SFT 预跑后，可用 `python scripts/build_initial_rates.py <SFT结果.jsonl>` 从原版 `server_agent.py` 聚合结果生成成功率；工具会拒绝漏跑、重复记录、错误结果和混入其他模型的文件。它验证结果覆盖与格式，运行协议、终止状态和基础设施异常仍应结合轨迹核对。当前未生成或伪造初始化成功率。
 
-`configs/qwen3vl-osworld-local-1step.yaml` 是额外的 6 卡连通性配置：batch=1、n=2、1 次更新、15 步上限、关闭 Frontier、使用本地 eval-agent 适配器；与正式 baseline 分开记录。原版 baseline 仍会被 `preflight_rl.py` 的 agent 缺失和 Frontier 检查阻止。
+`configs/qwen3vl-osworld-local-1step.yaml` 是额外的 6 卡连通性配置：batch=1、n=2、1 次更新、15 步上限、关闭 Frontier、使用本地 eval-agent 适配器；与正式 baseline 分开记录。未适配的原配置仍被缺失 `anthropic_rl` 的检查阻止；上述自动流程显式记录了公开 agent 替代，且必须先完成 Frontier rates 才能开始训练。
 
 该 15 步检查的两个 reward 均为 `-0.2`，因此虽然链路通过，梯度为零，不能算有效学习。随后使用 `configs/qwen3vl-osworld-local-signal-1step.yaml`，恢复 50 步上限和 30,000 训练长度，采集四条轨迹，得到 `[1, -0.2, 1, 0]`，完成了非零梯度更新。四条中两条成功只是同一任务上的采样结果，不是 OSWorld 总分，也不能证明更新后的策略更强。本次 step 约 1,276 秒，其中采样与环境约 1,226 秒、reference 前向约 18.6 秒、actor 反传及 step 约 31.0 秒。TCG 是当前主要吞吐限制。
 

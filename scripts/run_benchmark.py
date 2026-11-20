@@ -16,9 +16,11 @@ import sys
 import time
 import urllib.request
 from inference_pool import load_services, validate_routing_upgrade
+from evaluation_recovery import classify_attempt, retry_eligible
+from checkpoint_specs import CHECKPOINTS, checkpoint_spec
 
 ROOT = Path(os.environ.get('CUA_PROJECT_ROOT', Path(__file__).resolve().parents[1])).resolve()
-ADAPTERS = ['evaluate_sft.py', 'eval_qemu_provider.py', 'qemu_runtime.py', 'run_benchmark.py', 'scienceboard_compat.py', 'inference_pool.py']
+ADAPTERS = ['evaluate_sft.py', 'eval_qemu_provider.py', 'qemu_runtime.py', 'run_benchmark.py', 'scienceboard_compat.py', 'inference_pool.py', 'evaluation_recovery.py', 'checkpoint_specs.py']
 
 
 def now():
@@ -170,6 +172,7 @@ def episode(args, task, output, service, expected_hashes, stopped):
             raise RuntimeError('Evaluation exited without a summary; inspect attempt log')
         summary = json.loads(summary_path.read_text())
         row = summary['tasks'][0]
+        result['action_records'] = row.get('action_records', 0)
         score = row['score']
         if row['status'] != 'completed' or score is None or not math.isfinite(score) or not 0 <= score <= 1:
             raise RuntimeError('; '.join(row['errors']) or 'Episode has no valid verifier result')
@@ -179,6 +182,8 @@ def episode(args, task, output, service, expected_hashes, stopped):
     finally:
         if process is not None:
             stop_process(process, output)
+        if result.get('status') == 'infrastructure_error':
+            result['recovery'] = classify_attempt(result)
         result['finished_at_utc'] = now()
     return result
 
@@ -188,7 +193,7 @@ def main():
     p.add_argument('action', choices=['start', 'run', 'status'])
     p.add_argument('--run-dir', type=Path, required=True)
     p.add_argument('--benchmark', choices=['osworld', 'scienceboard'], default='osworld')
-    p.add_argument('--checkpoint', choices=['osworld-sft', 'scienceboard-sft'], default='osworld-sft')
+    p.add_argument('--checkpoint', choices=CHECKPOINTS, default='osworld-sft')
     p.add_argument('--workers', type=int, default=4)
     p.add_argument('--concurrency-report', type=Path, help='Matching VM acceptance report, required above four workers')
     p.add_argument('--service-pool', type=Path, help='Pool of identical checkpoint replicas with equivalent inference flags')
@@ -199,8 +204,17 @@ def main():
     p.add_argument('--task-timeout', type=int, default=3600)
     p.add_argument('--resume', action='store_true')
     p.add_argument('--retry-errors', action='store_true')
+    p.add_argument('--auto-recover', action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument('--max-infra-attempts', type=int, default=3)
+    p.add_argument('--retry-backoff-seconds', type=int, default=30)
+    p.add_argument('--launch-interval', type=float, default=1.0,
+                   help='Pace new episode process launches to reduce simultaneous guest boot load')
     p.add_argument('--only-tasks', nargs='+', help='Schedule only these domain/id entries; retain the full benchmark denominator')
     args = p.parse_args()
+    if not 1 <= args.max_infra_attempts <= 5 or not 0 <= args.retry_backoff_seconds <= 300:
+        p.error('Recovery requires 1..5 attempts and a backoff of 0..300 seconds')
+    if not 0 <= args.launch_interval <= 10:
+        p.error('launch-interval must be in 0..10 seconds')
     output = args.run_dir.resolve()
     if args.action == 'status':
         print((output / 'summary.json').read_text())
@@ -225,7 +239,7 @@ def main():
         return
     lease = (output / 'campaign.lock').open('a')
     fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    service_file = 'inference-service.json' if args.checkpoint == 'osworld-sft' else 'scienceboard-inference-service.json'
+    service_file = checkpoint_spec(ROOT, args.checkpoint)['state_file']
     service = json.loads((ROOT / 'runs' / service_file).read_text())
     check_endpoint(service)
     services = load_services(args.service_pool, service) if args.service_pool else [service]
@@ -304,12 +318,18 @@ def main():
                     last.update(measured)
                     row.update(status='completed', score=measured['score'])
                     continue
-            last.update(status='interrupted', score=None)
-            row.update(status='pending', score=None)
+            recovery = classify_attempt(last)
+            last.update(status='infrastructure_error', score=None, recovery=recovery,
+                        error='Coordinator or episode process exited before a valid result was recorded')
+            row.update(status='infrastructure_error', score=None, error=last['error'])
     else:
         state = {'created_at_utc': now(), 'hostname': socket.gethostname(), 'protocol': protocol,
                  'tasks': {t: {'domain': t.split('/')[0], 'status': 'pending', 'score': None, 'attempts': []} for t in tasks}}
     queue = select_queue(tasks, state['tasks'], args.retry_errors, args.only_tasks)
+    if args.auto_recover:
+        allowed = set(args.only_tasks or tasks)
+        queue += [t for t in tasks if t in allowed and t not in queue
+                  and retry_eligible(state['tasks'][t], args.max_infra_attempts)]
     state.update(status='running', pid=os.getpid(), workers=args.workers, pause_reason=None)
     coordinator_code = Path(__file__).read_bytes()
     coordinator_dir = output / 'coordinators'
@@ -335,6 +355,10 @@ def main():
     state.setdefault('launch_history', []).append({
         'at_utc': now(), 'pid': os.getpid(), 'retry_errors': args.retry_errors,
         'workers': args.workers, 'concurrency_acceptance': concurrency_evidence,
+        'recovery_policy': {'auto_recover': args.auto_recover, 'max_attempts': args.max_infra_attempts,
+                            'backoff_seconds': args.retry_backoff_seconds,
+                            'launch_interval_seconds': args.launch_interval,
+                            'scope': 'Explicit zero-action initialization failures only; valid scores and acted episodes never resampled'},
         'inference_pool': state.get('inference_pool'),
         'scheduled_tasks': queue.copy(), 'coordinator_snapshot': str(coordinator_path),
         'coordinator_sha256': hashlib.sha256(coordinator_code).hexdigest()})
@@ -354,24 +378,45 @@ def main():
         write_json(path, state)
         write_json(output / 'summary.json', snapshot(state))
     save()
-    consecutive_errors = 0
+    retry_at = {}
+    endpoint_retry_at = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         active = {}
         free_slots = list(range(args.workers))
         while queue or active:
             while queue and len(active) < args.workers and not stopped[0] and not draining[0]:
-                task = queue.pop(0)
+                ready = next((t for t in queue if retry_at.get(t, 0) <= time.monotonic()), None)
+                if ready is None:
+                    break
+                available = [s for s in free_slots if endpoint_retry_at.get(services[s % len(services)]['base_url'], 0) <= time.monotonic()]
+                if not available:
+                    break
+                slot = available[0]
+                selected_service = services[slot % len(services)]
+                try:
+                    check_endpoint(selected_service)
+                except Exception as exc:
+                    endpoint_retry_at[selected_service['base_url']] = time.monotonic() + 30
+                    state.setdefault('service_faults', []).append({'at_utc': now(), 'base_url': selected_service['base_url'], 'error': str(exc)})
+                    save()
+                    continue
+                task = ready
+                queue.remove(task)
                 row = state['tasks'][task]
                 attempt = output / 'attempts' / task.replace('/', '__') / f'{len(row["attempts"]) + 1:03d}'
                 attempt.parent.mkdir(parents=True, exist_ok=True)
                 row['attempts'].append({'attempt_dir': str(attempt), 'status': 'running'})
                 row['status'] = 'running'
-                slot = free_slots.pop(0)
-                selected_service = services[slot % len(services)]
+                free_slots.remove(slot)
                 active[pool.submit(episode, args, task, attempt, selected_service, protocol['adapter_sha256'], lambda: stopped[0])] = (task, slot)
                 save()
+                if args.launch_interval:
+                    time.sleep(args.launch_interval)
             if not active:
-                break
+                if not queue or stopped[0] or draining[0]:
+                    break
+                time.sleep(2)
+                continue
             done, _ = concurrent.futures.wait(active, timeout=15, return_when=concurrent.futures.FIRST_COMPLETED)
             for future in done:
                 task, slot = active.pop(future)
@@ -380,11 +425,10 @@ def main():
                 row = state['tasks'][task]
                 row['attempts'][-1] = result
                 row.update(status=result['status'], score=result['score'], error=result.get('error'))
-                consecutive_errors = consecutive_errors + 1 if result['status'] != 'completed' else 0
                 print(json.dumps({'task': task, **result}), flush=True)
-                if consecutive_errors >= 3:
-                    stopped[0] = True
-                    state['pause_reason'] = 'Three consecutive infrastructure/verifier errors; inspect before resuming'
+                if args.auto_recover and retry_eligible(row, args.max_infra_attempts):
+                    queue.append(task)
+                    retry_at[task] = time.monotonic() + args.retry_backoff_seconds * 2 ** (len(row['attempts']) - 1)
                 save()
             save()
     summary = aggregate(list(state['tasks'].values()))
