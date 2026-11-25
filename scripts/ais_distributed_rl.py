@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from ais_desktop_service import stop
 from ais_rank_status import read_rank_status
 from ais_vm_check import ROOT, save
+from runtime_env import jit_cache_paths
 
 WORLD = 8
 HEARTBEAT_INTERVAL = 5
@@ -63,6 +64,9 @@ def allocation(receipt):
         raise RuntimeError('Distributed RL requires eight AIS ranks, each with one visible GPU')
     ip = os.getenv('POD_IP') or socket.gethostbyname(socket.gethostname())
     local = {'ip': ip}
+    vision = json.loads(os.environ.get('CUA_AIS_CUDA_PROBE', '{}')).get('vision_preflight')
+    if vision:
+        local['vision_preflight'] = vision
     if rank == 0:
         parent = ROOT / 'runs/ais-distributed-rl'
         parent.mkdir(exist_ok=True, parents=True)
@@ -172,7 +176,8 @@ def supervise(info, rank, local_dir, args):
     ip = info['participants'][rank]['runtime']['ip']
     prom_dir = local_dir / 'prometheus'
     prom_dir.mkdir()
-    node_env.update(PROMETHEUS_MULTIPROC_DIR=str(prom_dir), CUA_ROLLOUT_IPC_DIR=str(local_dir))
+    node_env.update(jit_cache_paths(local_dir), PROMETHEUS_MULTIPROC_DIR=str(prom_dir),
+                    CUA_ROLLOUT_IPC_DIR=str(local_dir))
     env.pop('PROMETHEUS_MULTIPROC_DIR', None)
     endpoint = env.get('CUA_CONTROLLER_URL')
     own_status = run / f'rank-{rank}.json'

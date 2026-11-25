@@ -12,7 +12,7 @@ import socket
 import subprocess
 import sys
 import urllib.request
-from runtime_env import library_path
+from runtime_env import jit_cache_paths, library_path
 from trainer_save_boundary import add_final_save
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,9 +85,15 @@ ray_tmp = '/tmp/cua-rl-ray-' + str(os.getuid()) + '-' + str(os.getpid())
 worker_keys = ('LD_LIBRARY_PATH', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
                'WANDB_MODE', 'TOKENIZERS_PARALLELISM', 'PYTHONUNBUFFERED', 'HF_HUB_OFFLINE', 'NO_PROXY',
                'NCCL_DEBUG', 'CUA_STRICT_OSWORLD_REWARDS', 'VLLM_NO_USAGE_STATS', 'PROMETHEUS_MULTIPROC_DIR',
-               'VLLM_CACHE_ROOT', 'TRITON_CACHE_DIR')
-runtime_env = {'env_vars': {key: os.environ[key] for key in worker_keys if key in os.environ}}
+               'TRITON_PTXAS_PATH', 'PYTHONFAULTHANDLER')
+worker_env = {key: os.environ[key] for key in worker_keys if key in os.environ}
 distributed = os.getenv('CUA_DISTRIBUTED_RUN') if args.ais_pilot else None
+if not args.ais_pilot:
+    worker_env.update({key: os.environ[key] for key in ('VLLM_CACHE_ROOT', 'TRITON_CACHE_DIR') if key in os.environ})
+elif not distributed:
+    worker_env.update(jit_cache_paths(ray_tmp))
+# In the distributed job, each Ray node supplies its own local cache directories.
+runtime_env = {'env_vars': worker_env}
 if distributed:
     ray.init(address=os.environ['CUA_RAY_ADDRESS'], runtime_env=runtime_env)
 else:

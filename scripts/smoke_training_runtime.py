@@ -99,7 +99,10 @@ def check_pilot_placement():
         ray.shutdown()
 
 
-def training_stack(devices, verify_source):
+def training_stack(devices, verify_source, driver_probe):
+    vision_error = driver_probe.get('vision_preflight', {}).get('error')
+    if vision_error:
+        raise RuntimeError(vision_error)
     if verify_source:
         from ais_pilot import trainer_source_errors
         errors = trainer_source_errors(ROOT)
@@ -136,7 +139,7 @@ def distributed_training_check(out, report):
                 check_device_kernels()
                 local['kernel_cuda_indices'] = [device]
         else:
-            local.update(training_stack([device], verify_source=True))
+            local.update(training_stack([device], verify_source=True, driver_probe=report.get('cuda_driver_probe', {})))
     except Exception as exc:
         local['errors'].append(f'{type(exc).__name__}: {exc}')
     # Even a rank with missing training packages participates. All ranks receive
@@ -213,7 +216,8 @@ def ais_check(eight_gpus=False, all_ranks=False):
         if missing:
             raise RuntimeError('Missing training packages: ' + ', '.join(missing))
         check_pilot = eight_gpus or all_ranks
-        report.update(training_stack(range(8) if check_pilot else None, verify_source=check_pilot))
+        report.update(training_stack(range(8) if check_pilot else None, verify_source=check_pilot,
+                                     driver_probe=report.get('cuda_driver_probe', {})))
         if check_pilot:
             stage('ray_placement')
             report['ray_placement'] = check_pilot_placement()

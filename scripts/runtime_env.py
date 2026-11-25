@@ -12,6 +12,13 @@ def library_path(cfg):
                      *map(str, sorted((site / "nvidia").glob("*/lib"))), str(site / "torch/lib")])
 
 
+def jit_cache_paths(directory):
+    # vLLM caches compiled graphs separately from the Triton kernels they call.
+    root = Path(directory)
+    return {'TRITON_CACHE_DIR': str(root / 'triton'), 'VLLM_CACHE_ROOT': str(root / 'vllm'),
+            'TORCHINDUCTOR_CACHE_DIR': str(root / 'inductor')}
+
+
 def probe_cuda(include_versions=False):
     import ctypes
 
@@ -92,6 +99,8 @@ def probe_interpreter(python, *, include_versions=False):
 
 
 def launch_ais(args):
+    import importlib.util
+
     env = os.environ.copy()
     command = [sys.executable, '-u', *args]
     if '--help' in args or '-h' in args:
@@ -100,11 +109,22 @@ def launch_ais(args):
     selected = probe['attempts'][probe['selected']]
     if probe['selected']:
         env['LD_LIBRARY_PATH'] = selected['library_path']
+    if selected['passed'] and all(importlib.util.find_spec(pkg) for pkg in ('triton', 'vllm')):
+        from ais_frontier_server import check_cuda
+        env['PYTHONFAULTHANDLER'] = '1'
+        vision = {'inherited_ptxas_path': env.get('TRITON_PTXAS_PATH')}
+        try:
+            vision.update(check_cuda([sys.executable], env))
+            env['TRITON_PTXAS_PATH'] = vision['ptxas_path']
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+            vision['error'] = str(exc)
+        probe['vision_preflight'] = vision
     evidence = json.dumps(probe)
     print(f'AIS training CUDA probe: {evidence}', flush=True)
     env['CUA_AIS_CUDA_PROBE'] = evidence
-    if not selected['passed'] and '--ais-pilot' in args:
-        print(cuda_failure(probe), file=sys.stderr, flush=True)
+    vision_error = probe.get('vision_preflight', {}).get('error')
+    if '--ais' not in args and (not selected['passed'] or vision_error):
+        print(vision_error or cuda_failure(probe), file=sys.stderr, flush=True)
         raise SystemExit(2)
     os.execve(sys.executable, command, env)
 

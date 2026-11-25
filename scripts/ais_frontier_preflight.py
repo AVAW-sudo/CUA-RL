@@ -1,4 +1,4 @@
-"""Check the actual CUDA driver and compile the Frontier vision rotary kernel."""
+"""Cold-compile and verify the vLLM vision rotary kernel on the assigned A100."""
 import importlib.util
 import json
 import os
@@ -21,10 +21,11 @@ def main():
         os.environ['TRITON_CACHE_DIR'] = cold_cache
         import torch
         import triton
-        from triton.backends.nvidia.compiler import get_ptxas
+        from triton import knobs
         from vllm.vllm_flash_attn.layers.rotary import apply_rotary_emb
 
-        tool = get_ptxas()
+        # Both the Frontier and training Triton versions select this tool for A100.
+        tool = knobs.nvidia.ptxas
         if Path(tool.path).resolve() != bundled:
             raise RuntimeError(f'Triton selected {tool.path}, expected {bundled}')
         device = torch.cuda.current_device()

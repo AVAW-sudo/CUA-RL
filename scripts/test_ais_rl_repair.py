@@ -17,12 +17,34 @@ from ais_frontier_reuse import score_windows
 from collect_frontier_rates import release_failed_start
 from ais_pilot import checkpoint_capacity, final_checkpoint
 from ais_rl_job import run_job
+from runtime_env import launch_ais
 
 ROOT = Path(__file__).resolve().parents[1]
 TRAINER = ROOT / 'SCALE-CUA/scalecua_rl/trainer/src/agentrl/trainer'
 
 
 class RepairTests(unittest.TestCase):
+    def test_rl_entry_propagates_verified_assembler_or_stops_before_ray(self):
+        image_tool = '/usr/local/cuda/bin/ptxas'
+        training_tool = '/training/triton/backends/nvidia/bin/ptxas'
+        with patch.dict(os.environ, TRITON_PTXAS_PATH=image_tool), \
+                patch('runtime_env.probe_interpreter', return_value={'selected': 0, 'attempts': [{'passed': True}]}), \
+                patch('importlib.util.find_spec', return_value=True), patch('ais_frontier_server.check_cuda') as rotary, \
+                patch('os.execve') as launch:
+            rotary.return_value = {'ptxas_path': training_tool, 'vision_rotary_cold_compile': 'passed'}
+            launch_ais(['scripts/ais_distributed_rl.py'])
+            env = launch.call_args.args[-1]
+            self.assertEqual(env['TRITON_PTXAS_PATH'], training_tool)
+            receipt = json.loads(env['CUA_AIS_CUDA_PROBE'])['vision_preflight']
+            self.assertEqual(receipt['inherited_ptxas_path'], image_tool)
+            self.assertEqual(receipt['vision_rotary_cold_compile'], 'passed')
+
+            launch.reset_mock()
+            rotary.side_effect = RuntimeError('kernel load failed')
+            with self.assertRaises(SystemExit):
+                launch_ais(['scripts/ais_distributed_rl.py'])
+            launch.assert_not_called()
+
     def test_preflight_failure_skips_desktop(self):
         with patch('ais_rl_job.start_desktop') as start:
             self.assertEqual(run_job([sys.executable, '-c', 'raise SystemExit(2)']), 2)
