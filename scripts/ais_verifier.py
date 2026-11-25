@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
+import json
 from pathlib import Path
 import time
 from urllib.parse import urlsplit
@@ -39,6 +40,12 @@ def install_scoring_observer(startup_budget=None):
             raise
         if response.status_code >= 500:
             scope[1].append(f'{route} HTTP {response.status_code}')
+        elif route == '/setup/execute' and response.ok:
+            command = json.loads(request.body or '{}').get('command')
+            if isinstance(command, list) and command[:2] == ['/usr/bin/timeout', '--kill-after=2']:
+                code = response.json().get('returncode')
+                if code != 0:
+                    scope[1].append(f'{route} timed command returned {code}')
         return response
 
     observed.ais_scoring_observer = True

@@ -5,9 +5,37 @@ import unittest
 
 from ais_dataset_screen import DEFAULT_BATCHES, ROOT, checked_score, coverage, expected_protocol, merge, plan, restore, summarize
 from ais_vm_check import save
+from build_overnight_screen import MANIFEST
+from overnight_prompts import export
 
 
 class DatasetScreenTest(unittest.TestCase):
+    def test_overnight_pool_is_larger_than_target_and_rejects_nonzero_controls(self):
+        candidates = json.loads(MANIFEST.read_text())
+        self.assertGreater(len(candidates), 256)
+        self.assertEqual(plan(MANIFEST, 2)['trials'], 4 * len(candidates))
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / '23599999'
+            def records(filename):
+                return [json.loads(line) for line in (directory / filename).read_text().splitlines()]
+            for state, reward in [('passed', 0), ('nonzero_initial_reward', 1)]:
+                rewards = [1, 0, 0, 1] if reward == 0 else [None] * 4
+                results = {i: {'initial_state': {'task_index': i, 'status': state, 'reward': reward, 'session_id': '1'},
+                               'raw_rewards': rewards} for i in candidates}
+                export(directory, directory, final=results)
+                scored = records('prompts-scored.jsonl')
+                status = json.loads((directory / 'prompt-status.json').read_text())
+                self.assertEqual(len(scored), len({r['prompt'].strip().casefold() for r in scored}))
+                self.assertTrue(all(r['valid_trials'] == 4 for r in scored))
+                self.assertEqual(status['scored_shortfall'], 256 - len(scored))
+                if state == 'passed':
+                    self.assertEqual(len(scored), 256)
+                    self.assertGreater(len(records('prompt-pool.jsonl')), 256)
+                    self.assertLess(len(records('prompts-reviewed.jsonl')), 256)
+                else:
+                    self.assertGreater(status['scored_shortfall'], 0)
+                    self.assertFalse(set(candidates).intersection(r['task_index'] for r in scored))
+
     def test_batch_is_disjoint_and_train_only(self):
         data = plan(None, 2)
         original = plan(DEFAULT_BATCHES[0], 2)

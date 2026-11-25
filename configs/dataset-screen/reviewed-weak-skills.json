@@ -1,0 +1,142 @@
+{
+  "libreoffice_calc_aceb0368-56b8-4073-b70e-3dc9aee184e0_traj_verify_2": {
+    "role": "main",
+    "skill": "核对 Word 答卷与参考答案，写回指定学生的分项及总分",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_30e3e107-1cfb-46ee-a755-2cd080d7ba6a_traj_verify_1": {
+    "role": "component",
+    "skill": "按条件统计性别，把计数写入指定单元格",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_writer_5df7b33a-9f77-4101-823e-02f863e1c1ae_traj_verify_0": {
+    "role": "component",
+    "skill": "从 PDF 读取页数并写入独立文件",
+    "evidence": "offline-batch-02"
+  },
+  "multi_apps_5bc63fb9-276a-4439-a7c1-9dc76401737f_traj_verify_0": {
+    "role": "component",
+    "skill": "读取 JSON、统计去重后的模型名、写入文本文件",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_035f41ba-6653-43ab-aa63-c86d449d62e5_traj_verify_4": {
+    "role": "component",
+    "skill": "逐行计算毛利并汇总到指定行",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_0bf05a7d-b28b-44d2-955a-50b41e24012a_traj_verify_1": {
+    "role": "component",
+    "skill": "逐行计算 ID 位数并写入新增列",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_6e99a1ad-07d2-4b66-a1ce-ece6d99c20a5_traj_verify_0": {
+    "role": "component",
+    "skill": "计算支出列合计并写入指定单元格",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_7efeb4b1-3d19-4762-b163-63328d66303b_traj_verify_4": {
+    "role": "component",
+    "skill": "填充序号列并汇总销售额",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_f9584479-3d0d-4c79-affa-9ad7afdd8850_traj_verify_1": {
+    "role": "component",
+    "skill": "分别计算各季度合计并填入同一行",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_51719eea-10bc-4246-a428-ac7c433dd4b3_traj_verify_5": {
+    "role": "main",
+    "skill": "从零售价表查价，结合数量和折扣把营收公式写入指定单元格",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_347ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_0": {
+    "role": "component",
+    "skill": "计算月度总支出的平均数并写回指定单元格",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_357ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_0": {
+    "role": "component",
+    "skill": "用替代时薪重算总收入并写回结果",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_4e6fcf72-daf3-439f-a232-c434ce416af6_traj_verify_0": {
+    "role": "component",
+    "skill": "按出生年份条件统计员工并写回计数",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_6054afcb-5bab-4702-90a0-b259b5d3217c_traj_verify_5": {
+    "role": "component",
+    "skill": "统计指定列中缺失标记的行数并写入指定单元格",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_e135df7c-7687-4ac0-a5f0-76b74438b53e_traj_verify_2": {
+    "role": "component",
+    "skill": "按单位字段筛选计数并写入指定单元格",
+    "evidence": "offline-batch-02"
+  },
+  "libreoffice_calc_035f41ba-6653-43ab-aa63-c86d449d62e5_traj_verify_1": {
+    "role": "component",
+    "skill": "逐年汇总三项成本并填入目标列",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_writer_6f81754e-285d-4ce0-b59e-af7edb02d108_traj_verify_3": {
+    "role": "component",
+    "skill": "统计文档中的记录数并追加到末尾",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_347ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_5": {
+    "role": "component",
+    "skill": "找出费用最大的月份并写回其名称",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_d681960f-7bc3-4286-9913-a8812ba3261a_traj_verify_4": {
+    "role": "component",
+    "skill": "根据表内评分规则查找等级并写入目标单元格",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_4e6fcf72-daf3-439f-a232-c434ce416af6_traj_verify_2": {
+    "role": "component",
+    "skill": "按出生月份统计员工并写回计数",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_0bf05a7d-b28b-44d2-955a-50b41e24012a_traj_verify_4": {
+    "role": "component",
+    "skill": "补齐 ID 位数，读取整列最大值并写回",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_357ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_1": {
+    "role": "component",
+    "skill": "从总收入和工作天数计算日均收入并写回",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_f9584479-3d0d-4c79-affa-9ad7afdd8850_traj_verify_4": {
+    "role": "component",
+    "skill": "逐产品汇总四季销售并填入目标列",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_d681960f-7bc3-4286-9913-a8812ba3261a_traj_verify_2": {
+    "role": "component",
+    "skill": "按最高分查回学生姓名并写入指定位置",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_347ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_3": {
+    "role": "component",
+    "skill": "读取年度汇总行的指定分类金额并写回",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_347ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_4": {
+    "role": "component",
+    "skill": "读取年度总费用并写入指定单元格",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_d681960f-7bc3-4286-9913-a8812ba3261a_traj_verify_0": {
+    "role": "component",
+    "skill": "计算全班均分并写回",
+    "evidence": "offline-batch-03"
+  },
+  "libreoffice_calc_f9584479-3d0d-4c79-affa-9ad7afdd8850_traj_verify_3": {
+    "role": "component",
+    "skill": "按每行产品汇总四季度销售并写入目标列",
+    "evidence": "offline-batch-03"
+  }
+}

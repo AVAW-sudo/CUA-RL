@@ -16,6 +16,49 @@ from inference_pool import load_services
 from run_benchmark import ROOT, write_json
 
 
+def task_request(name, index):
+    return {'name': name, 'index': -1, 'custom_task': {'index': index, 'with_record': False,
+            'image_width': 1280, 'image_height': 720, 'screen_width': 1920, 'screen_height': 1080,
+            'agent_version': 'scalecua_osworld', 'env_version': 'anthropic',
+            'agent_config': {'relative_coordinate': True}, 'max_rounds': 50}}
+
+
+async def initial_state(rpc, name, index, receipt):
+    """End a fresh guest session before any action and let its official judge score it."""
+    if receipt.is_file():
+        record = json.loads(receipt.read_text())
+        if record['task_index'] != index:
+            raise ValueError(f'Misplaced control at {receipt}')
+        return record['status'] == 'passed'
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    record = {'task_index': index, 'status': 'unavailable', 'errors': []}
+    for attempt in range(2):
+        sid = None
+        try:
+            data, sid = await rpc('/start_sample', task_request(name, index))
+            if not sid or data.get('finish') or not data.get('messages'):
+                raise ValueError('No live initial observation')
+            data, _ = await rpc('/interact', {'messages': [{'role': 'assistant', 'content': 'Done.'}]}, sid)
+            reward = data.get('reward')
+            if (not data.get('finish') or data.get('status') != 'completed' or
+                    type(reward) not in (float, int) or not 0 <= reward <= 1):
+                raise ValueError(f'Initial state had no verified reward ({data.get("status")})')
+            record.update(status='passed' if reward == 0 else 'nonzero_initial_reward', reward=reward, session_id=sid)
+            break
+        except (ClientError, asyncio.TimeoutError, ValueError) as exc:
+            record['errors'].append(str(exc))
+        finally:
+            if sid:
+                try:
+                    await rpc('/cancel', sid=sid)
+                except (ClientError, asyncio.TimeoutError):
+                    pass
+        if attempt == 0:
+            await asyncio.sleep(3)
+    write_json(receipt, record)
+    return record['status'] == 'passed'
+
+
 async def release_failed_start(client, worker, exc):
     # The controller forgets a session after a /start_sample error. Its response
     # still identifies the exact session the private worker may be initializing.
@@ -61,16 +104,7 @@ async def collect_all(args):
         log.write(json.dumps({'at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                               'concurrency': args.concurrency, 'controller': args.controller,
                               'secondary_worker': json.loads(selection.read_text()) if selection.exists() else None}) + '\n')
-    queue = asyncio.Queue()
     selected = [args.probe_one] if args.probe_one else indices
-    # Finish four trials on an initial group of tasks while the desktop and policy stay warm.
-    group_size = args.concurrency if args.screening else max(1, len(selected))
-    for start in range(0, len(selected), group_size):
-        for run in ([1] if args.probe_one else range(1, 5)):
-            for index in selected[start:start + group_size]:
-                path = directory / index / str(run)
-                if not (path / 'result.json').exists():
-                    queue.put_nowait((index, run, path))
 
     async with ClientSession(timeout=ClientTimeout(total=900)) as client:
         async def rpc(route, body=None, sid=None):
@@ -98,11 +132,7 @@ async def collect_all(args):
                 write_json(attempt, record)
                 try:
                     initialized = time.monotonic()
-                    data, sid = await rpc('/start_sample', {'name': args.task_name, 'index': -1,
-                        'custom_task': {'index': index, 'with_record': False, 'image_width': 1280,
-                                        'image_height': 720, 'screen_width': 1920, 'screen_height': 1080,
-                                        'agent_version': 'scalecua_osworld', 'env_version': 'anthropic',
-                                        'agent_config': {'relative_coordinate': True}, 'max_rounds': 50}})
+                    data, sid = await rpc('/start_sample', task_request(args.task_name, index))
                     record['session_id'] = sid
                     record['timings']['initialization_seconds'] = time.monotonic() - initialized
                     if data.get('finish') or not data.get('messages'):
@@ -183,10 +213,27 @@ async def collect_all(args):
                 if number < args.max_attempts:
                     await asyncio.sleep(min(30 * number, 90))
 
+        queue = asyncio.Queue()
+        group_size = args.concurrency if args.screening else max(1, len(selected))
+        controls = {}
+        for start in range(0, len(selected), group_size):
+            for run in ([1] if args.probe_one else range(1, 5)):
+                for index in selected[start:start + group_size]:
+                    path = directory / index / str(run)
+                    if not (path / 'result.json').exists():
+                        queue.put_nowait((index, run, path))
+
         async def lane(slot):
             service = services[slot % len(services)]
             while not queue.empty():
                 index, run, path = queue.get_nowait()
+                if args.check_initial_state:
+                    if index not in controls:
+                        controls[index] = asyncio.create_task(initial_state(
+                            rpc, args.task_name, index, directory / index / 'initial-state.json'))
+                    if not await controls[index]:
+                        queue.task_done()
+                        continue
                 await episode(index, run, path, service)
                 queue.task_done()
         await asyncio.gather(*(lane(slot) for slot in range(args.concurrency)))
@@ -208,6 +255,7 @@ if __name__ == '__main__':
     p.add_argument('--primary-service', type=Path, default=ROOT / 'runs/inference-service.json')
     p.add_argument('--probe-one', metavar='TASK', help='Collect only round one of this selected task')
     p.add_argument('--screening', action='store_true', help='Leave per-slot evidence for the screening audit')
+    p.add_argument('--check-initial-state', action='store_true', help='Require a zero-reward untouched control before SFT trials')
     p.add_argument('--indices', type=Path, default=ROOT / 'configs/rl-indices.json')
     p.add_argument('--task-name', default='osworld-rl')
     p.add_argument('--rates-output', type=Path, default=ROOT / 'configs/initial_pass_rate.osworld-rl.json')
@@ -218,6 +266,8 @@ if __name__ == '__main__':
     p.add_argument('--max-attempts', type=int, default=3)
     p.add_argument('--output', type=Path, default=ROOT / 'runs/frontier-initialization')
     args = p.parse_args()
+    if args.check_initial_state and not args.screening:
+        p.error('--check-initial-state requires --screening')
     if not 1 <= args.concurrency <= 64 or not 1 <= args.max_attempts <= 5:
         p.error('Invalid concurrency or retry budget')
     if args.private_worker and args.concurrency != 1:

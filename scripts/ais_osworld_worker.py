@@ -5,8 +5,10 @@ from contextlib import suppress
 from contextvars import ContextVar
 import io
 import logging
+import math
 import os
 from pathlib import Path
+import shlex
 import tempfile
 import threading
 import time
@@ -15,6 +17,7 @@ import uuid
 import desktop_env.desktop_env
 import desktop_env.providers
 from desktop_env.controllers.python import PythonController
+from desktop_env.controllers.setup import SetupController
 from PIL import Image
 import requests
 from agentrl.worker.environment import EnvironmentController
@@ -99,6 +102,21 @@ class AisTraceStore(TraceStore):
 
         writer.finalize_callback = archive_once
         return writer
+
+
+class AisSetupController(SetupController):
+    """Run the optional execute timeout inside the disposable Ubuntu guest."""
+    def _execute_setup(self, command, stdout='', stderr='', shell=False, until=None, timeout=None):
+        if timeout is not None:
+            if type(timeout) not in (float, int) or not math.isfinite(timeout) or timeout <= 0:
+                raise ValueError(f'Invalid OSWorld execute timeout: {timeout}')
+            if shell:
+                command = ['/bin/sh', '-c', command if isinstance(command, str) else shlex.join(command)]
+            elif isinstance(command, str):
+                command = shlex.split(command)
+            command = ['/usr/bin/timeout', '--kill-after=2', str(timeout), *command]
+            shell = False
+        return super()._execute_setup(command, stdout, stderr, shell, until)
 
 
 class AisScreenshotController(PythonController):
@@ -307,5 +325,6 @@ class AisOSWorldTask(OSWorldTask):
         desktop_env.providers.create_vm_manager_and_provider = factory
         desktop_env.desktop_env.create_vm_manager_and_provider = factory
         desktop_env.desktop_env.PythonController = AisScreenshotController
+        desktop_env.desktop_env.SetupController = AisSetupController
         src.task.OSWorldSession = AisOSWorldSession
         install_scoring_observer(startup_budget)

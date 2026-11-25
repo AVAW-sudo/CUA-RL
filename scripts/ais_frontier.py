@@ -47,7 +47,7 @@ def check_services(policy, desktop, out):
         raise RuntimeError(f'{message}. See {out / logs[-1]}')
 
 
-def run_collector(out, indices, expected, status, probe, reused_protocol, *, screen_lanes=None):
+def run_collector(out, indices, expected, status, probe, reused_protocol, *, screen_lanes=None, check_initial_state=False):
     base = ROOT.parent.parent
     binding = []
     with ExitStack() as sockets:
@@ -109,6 +109,8 @@ def run_collector(out, indices, expected, status, probe, reused_protocol, *, scr
             command += ['--private-worker', f'http://127.0.0.1:{worker_port}/api']
         if screen_lanes:
             command.append('--screening')
+        if check_initial_state:
+            command.append('--check-initial-state')
         if reused_protocol:
             command += ['--reused-protocol', str(reused_protocol)]
         if probe:

@@ -1,0 +1,1617 @@
+{
+  "date": "2026-11-25",
+  "status": "离线候选评审；真实桌面预跑待执行",
+  "sources": {
+    "dataset_revision": "ca4266e614883a8bed5b8e9caf4f0fcbccb6a023",
+    "versions": "configs/sources.lock.json",
+    "splits": "configs/research-splits/manifest.json",
+    "pilot_ids": "configs/original-pilot/train-indices.json",
+    "sft_audit": "runs/ais-sft-evaluations/23495234/full/summary.json"
+  },
+  "sampling": "定向选取 train 中与目标操作相关的变体。按变体应用各取 16 道，每个原始 UUID 最多一题，原题 SFT 实测为零。排除 64 题 pilot 中相同变体以及与 dev/test 题面仅大小写或空白不同的变体。该样本不代表随机抽样通过率。",
+  "timing": {
+    "review_start_utc": "2026-11-25T09:44:03Z",
+    "decisions_recorded_utc": "2026-11-25T09:54:21Z",
+    "review_elapsed_seconds": 618,
+    "amortized_seconds_per_candidate": 19.3,
+    "local_probe_elapsed_seconds": 2.013,
+    "scope": "墙钟从开始查看项目到写完逐题去留理由。含编写及运行探针、查素材与轨迹；不含整理本文、人工独立复核、下载未缓存素材、排队和桌面预跑。单题独立计时只覆盖最后一次本地探针。"
+  },
+  "interpretation": [
+    "seed 证据来自已评分原题的动作记录和末段文字。模型自述仅按自述记录。变体本轮未采样，原题 SFT 分数不代表变体分数。",
+    "使用固定版本的 evaluator 和 getter。文件类用本地缓存或在内存中生成的文件替代来宾文件。URL 等题直接将观测值传给评分函数。未启动桌面。",
+    "reference 表示参考产物或阳性对照的离线分数，入围的七题从原始输入重算；其余部分题目仅构造符合读取器格式的对照。initial_file 为初始文件或目标尚不存在时的离线分数，只在做过该检查时记录。initial_file 不覆盖虚拟机 setup 后的全部状态。",
+    "wrong 为首组错例分数。另有 wrong_artifact（具体文件或观测）、format_negative、category_negative 或 suffix_negative 时，以 description 对应的错例为准。reference_cells 列出生成表格时写入的值，changed_cell 是首组错例改动的位置。分数保留六位。",
+    "holdout_setup_matches 是 setup 下载项中 URL 或目标文件名有交集的提示，文件名忽略大小写；names 最多列十六个。同名本身不等于字节相同。key_input_overlap 另记已验证的关键素材。留出侧只核对题面及素材。",
+    "保留表示可进 Frontier 预跑。桌面复核表示另有具体疑点。排除保留现有官方判分器和评估划分。"
+  ],
+  "counts": {
+    "by_decision": {
+      "排除": 22,
+      "桌面复核": 3,
+      "保留·分步": 6,
+      "保留·主练": 1
+    },
+    "by_primary_reason": {
+      "wrong_output_full_credit": 17,
+      "needs_desktop_evidence": 3,
+      "component": 6,
+      "shared_key_input_with_holdout": 3,
+      "variant_drops_target_skill": 2,
+      "end_to_end": 1
+    },
+    "by_variant_domain": {
+      "multi_apps": {
+        "排除": 14,
+        "桌面复核": 1,
+        "保留·分步": 1
+      },
+      "libreoffice_calc": {
+        "保留·分步": 5,
+        "排除": 8,
+        "桌面复核": 2,
+        "保留·主练": 1
+      }
+    }
+  },
+  "tasks": [
+    {
+      "variant_id": "multi_apps_00fa164e-2612-4439-992e-157d019a8436_traj_verify_4",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/00fa164e-2612-4439-992e-157d019a8436_traj_verify_4.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Extract GPT-4 results from ~/Documents/awesome-desktop/expe-results.xlsx and insert them as a table in the '5.2 Main Results' section of the report.",
+      "sft_seed": {
+        "uuid": "00fa164e-2612-4439-992e-157d019a8436",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-1/released/tasks/multi_apps/00fa164e-2612-4439-992e-157d019a8436/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/00fa164e-2612-4439-992e-157d019a8436/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "结尾仍在 Calc 与 Writer 之间切换，模型报告“选择性粘贴”对话框仍开着。"
+      },
+      "target_skill": "跨文件抄录实验结果",
+      "evaluator": {
+        "metric_name": "check_gpt4_table__8ae851f2fbec3e62c3a4b8c28bfb6c8b_qw35sft2_8ed65a33",
+        "getter_type": "docx_writer_state__8ae851f2fbec3e62c3a4b8c28bfb6c8b_qw35sft2_a3812e2a"
+      },
+      "offline_check": {
+        "description": "在 5.2 节建表后把 GPT-4 数值写为 WRONG。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/chrome.py:1296",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/misc.py:6603",
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.033
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "评分只认章节和模型名，错误数值获满分。"
+    },
+    {
+      "variant_id": "multi_apps_09a37c51-e625-49f4-a514-20a773797a8a_traj_verify_4",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/09a37c51-e625-49f4-a514-20a773797a8a_traj_verify_4.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Find the travel photo on the Desktop and save its width and height (in pixels) to a text file named 'image_info.txt' on the Desktop.",
+      "sft_seed": {
+        "uuid": "09a37c51-e625-49f4-a514-20a773797a8a",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-3/released/tasks/multi_apps/09a37c51-e625-49f4-a514-20a773797a8a/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/09a37c51-e625-49f4-a514-20a773797a8a/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "最后多次点击 GIMP 图层菜单，仍在尝试透明度操作。"
+      },
+      "target_skill": "从图片读取属性后写文本",
+      "evaluator": {
+        "metric_name": "check_text_file_contains_dimensions__30cadb0ec7eca28df693cf924ab88301_qw35sft2_30caabbd",
+        "getter_type": "text_file_content__30cadb0ec7eca28df693cf924ab88301_qw35sft2_a743245c"
+      },
+      "offline_check": {
+        "description": "把源图宽高标为 width=510 height=320，交换两值。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/general.py:1356",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/file.py:1997",
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.001
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "读图属性的关键语义是数值与属性对应；倒置仍满分，且变体省掉原题的编辑步骤。"
+    },
+    {
+      "variant_id": "multi_apps_1f18aa87-af6f-41ef-9853-cdb8f32ebdea_traj_verify_4",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/1f18aa87-af6f-41ef-9853-cdb8f32ebdea_traj_verify_4.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Add the multiple-choice answers for Grammar tests 2 and 3 to Answer.docx, following the format used for Test 1.",
+      "sft_seed": {
+        "uuid": "1f18aa87-af6f-41ef-9853-cdb8f32ebdea",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-1/released/tasks/multi_apps/1f18aa87-af6f-41ef-9853-cdb8f32ebdea/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/1f18aa87-af6f-41ef-9853-cdb8f32ebdea/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "最后仍在 Writer 的文件菜单尝试打开资料。"
+      },
+      "target_skill": "多文件答题并写回 Word",
+      "evaluator": {
+        "metric_name": "check_answers_tests23__ed93db9128130b7a782216ac4507a0ca_qw35sft2_80825339",
+        "getter_type": "docx_text__ed93db9128130b7a782216ac4507a0ca_qw35sft2_c07f733b"
+      },
+      "offline_check": {
+        "description": "调换 Test 2 和 Test 3 的答案，两个字符串都保留在文档内。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:5301",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/misc.py:6539",
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.031
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "两组答案写反仍满分，不能验证对应关系。",
+      "holdout_setup_matches": {
+        "dev": {
+          "families": 1,
+          "identical_urls": 5,
+          "names": [
+            "course timetable.xlsx",
+            "csfsrules.pdf",
+            "fragrules.pdf",
+            "irregularrules01.pdf",
+            "irregularrules02.pdf",
+            "public lecture teaching plan.docx"
+          ]
+        }
+      }
+    },
+    {
+      "variant_id": "multi_apps_236833a3-5704-47fc-888c-4f298f09f799_traj_verify_4",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/236833a3-5704-47fc-888c-4f298f09f799_traj_verify_4.json",
+      "variant_domain": "multi_apps",
+      "instruction": "In paper_reading_2024_03_01.docx, find the Arxiv PDF link of the first paper and open that link in Chrome.",
+      "sft_seed": {
+        "uuid": "236833a3-5704-47fc-888c-4f298f09f799",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-0/released/tasks/multi_apps/236833a3-5704-47fc-888c-4f298f09f799/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/236833a3-5704-47fc-888c-4f298f09f799/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末步在终端尝试获取论文列表，原题要求回填文档元信息。"
+      },
+      "target_skill": "从文档定位指定论文并打开 PDF",
+      "evaluator": {
+        "metric_name": "is_expected_url_pattern_match",
+        "getter_type": "active_url_from_accessTree"
+      },
+      "offline_check": {
+        "description": "打开同一篇的 arXiv 摘要页，替代 PDF。",
+        "scores_and_evidence": {
+          "metric": "SCALE-CUA/osworld_eval/desktop_env/evaluators/metrics/chrome.py:70",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "cpu_probe_elapsed_s": 0.022
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "摘要页获满分，而且变体省掉了原题的元信息写回。"
+    },
+    {
+      "variant_id": "multi_apps_26660ad1-6ebb-4f59-8cba-a8432dfe8d38_traj_verify_2",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/26660ad1-6ebb-4f59-8cba-a8432dfe8d38_traj_verify_2.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Run a speed test on speedtest.net and save only the download speed value (in Mbps) to ~/Test/Speed/download.txt.",
+      "sft_seed": {
+        "uuid": "26660ad1-6ebb-4f59-8cba-a8432dfe8d38",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-0/released/tasks/multi_apps/26660ad1-6ebb-4f59-8cba-a8432dfe8d38/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/26660ad1-6ebb-4f59-8cba-a8432dfe8d38/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段模型报告网页请求返回 404，随后切回浏览器。"
+      },
+      "target_skill": "测量网络后保存数值",
+      "evaluator": {
+        "metric_name": "check_download_speed_file__034287361433ba7df6a1a4debdad660e",
+        "getter_type": "vm_file"
+      },
+      "offline_check": {
+        "description": "创建文本“1 fabricated”，没有测速结果。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/general.py:379",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "cpu_probe_elapsed_s": 0.001
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "任意正数都能获满分，动态真值和内容均无法核验。"
+    },
+    {
+      "variant_id": "multi_apps_36037439-2044-4b50-b9d1-875b5a332143_traj_verify_6",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/36037439-2044-4b50-b9d1-875b5a332143_traj_verify_6.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Look at the paper open on the Desktop and find where the corresponding author works. Then open Chrome and navigate to that institution's official website.",
+      "sft_seed": {
+        "uuid": "36037439-2044-4b50-b9d1-875b5a332143",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-2/released/tasks/multi_apps/36037439-2044-4b50-b9d1-875b5a332143/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/36037439-2044-4b50-b9d1-875b5a332143/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "最后仍等待 Chrome 打开所选作者的 Scholar 页面。"
+      },
+      "target_skill": "从论文查机构并打开官网",
+      "evaluator": {
+        "metric_name": "is_expected_url_pattern_match",
+        "getter_type": "active_url_from_accessTree"
+      },
+      "offline_check": {
+        "description": "将 stanford.edu 放在不相关网站的查询参数内。",
+        "scores_and_evidence": {
+          "metric": "SCALE-CUA/osworld_eval/desktop_env/evaluators/metrics/chrome.py:70",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "cpu_probe_elapsed_s": 0.005
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "只在整条 URL 中匹配字符串，错误站点获满分。"
+    },
+    {
+      "variant_id": "multi_apps_3680a5ee-6870-426a-a997-eba929a0d25c_traj_verify_4",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c_traj_verify_4.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Using only the command line, merge file1.xlsx and file2.ods from the Desktop by joining each first name and last name with a space (producing one full name per line), save the result as ~/Desktop/output.csv, and open it in LibreOffice Calc.",
+      "sft_seed": {
+        "uuid": "3680a5ee-6870-426a-a997-eba929a0d25c",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-0/released/tasks/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "轨迹末段出现 output.csv，模型仍尝试让 Calc 窗口可见。"
+      },
+      "target_skill": "跨文件逐行合并姓名",
+      "evaluator": {
+        "metric_name": "check_csv_space_merged__00d80996b3209df110a0b1e69fc0ab31_qw35sft2_fd4c6711",
+        "getter_type": "csv_space_merged__00d80996b3209df110a0b1e69fc0ab31_qw35sft2_b3c91bc9"
+      },
+      "offline_check": {
+        "description": "保留正确首行，后续 4,999 行全部换成同一个无关姓名。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/table.py:339",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/file.py:2118",
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.001
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "读取器只输出首行和行数等概况，错误 CSV 获满分。"
+    },
+    {
+      "variant_id": "multi_apps_3e3fc409-bff3-4905-bf16-c968eee3f807_traj_verify_5",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/3e3fc409-bff3-4905-bf16-c968eee3f807_traj_verify_5.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Add a new sheet named 'unseen_movies' to the movies.xlsx file. The new sheet should have the same column headers as the 'seen_movies' sheet.",
+      "sft_seed": {
+        "uuid": "3e3fc409-bff3-4905-bf16-c968eee3f807",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23495234/full/rank-0/released/tasks/multi_apps/3e3fc409-bff3-4905-bf16-c968eee3f807/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/3e3fc409-bff3-4905-bf16-c968eee3f807/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "模型报告已经看到 unseen_movies 工作表，同时表示不确定当前页内容。"
+      },
+      "target_skill": "跨工作表复制四列表头",
+      "evaluator": {
+        "metric_name": "check_unseen_sheet_headers__ac461f3f5169eddd647d2f7d2aad85a2_qw35sft2_0281101b",
+        "getter_type": "xlsx_unseen_sheet_headers__ac461f3f5169eddd647d2f7d2aad85a2_qw35sft2_07dfbad5"
+      },
+      "offline_check": {
+        "description": "复制原始四列表头后改错最后一列。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:3834",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:6332",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "A1": "title",
+            "B1": "release year",
+            "C1": "ratings",
+            "D1": "description"
+          },
+          "reference": 1.0,
+          "wrong": 0.75,
+          "changed_cell": "D1",
+          "cpu_probe_elapsed_s": 0.071
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "桌面复核",
+      "primary_reason": "needs_desktop_evidence",
+      "rationale": "可作为建表分步题。先在真实桌面验证正确工作表和表头是否已被 SFT 稳定完成，再决定是否占用弱项名额。"
+    },
+    {
+      "variant_id": "multi_apps_415ef462-bed3-493a-ac36-ca8c6d23bf1b_traj_verify_2",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b_traj_verify_2.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Extract the December AWS invoice PDF from the Bills email to the receipts folder and add a row to the tally book for the AWS December billing.",
+      "sft_seed": {
+        "uuid": "415ef462-bed3-493a-ac36-ca8c6d23bf1b",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-3/released/tasks/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/415ef462-bed3-493a-ac36-ca8c6d23bf1b/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段刚打开文件选择器，仍在寻找 Finance 中的账本。"
+      },
+      "target_skill": "从邮件存发票并登记账本",
+      "evaluator": {
+        "metric_name": "check_tally_book_last_row__97f6f4530ffb08062fee8d0568f59984_qw35sft2_d1e6ad53",
+        "getter_type": "tally_book_last_row__97f6f4530ffb08062fee8d0568f59984_qw35sft2_3aa47332"
+      },
+      "offline_check": {
+        "description": "保留正确账本行，预期 PDF 路径写入无关字节。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:5622",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/misc.py:6923",
+          "initial_file": 0.165,
+          "reference": 1.0,
+          "wrong": 1.0,
+          "cpu_probe_elapsed_s": 0.027
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "附件只查非空，坏附件仍满分，原始账本在离线初态已有部分分（0.165）。",
+      "holdout_setup_matches": {
+        "dev": {
+          "families": 1,
+          "identical_urls": 0,
+          "names": [
+            "thunderbird-profile.tar.gz"
+          ]
+        },
+        "test": {
+          "families": 2,
+          "identical_urls": 0,
+          "names": [
+            ".projects.tar.xz",
+            "aws-invoice-2308.pdf",
+            "aws-invoice-2309.pdf",
+            "aws-invoice-2310.pdf",
+            "aws-invoice-2311.pdf",
+            "tally_book.xlsx",
+            "thunderbird-profile.tar.gz",
+            "x-receipt-2312.pdf"
+          ]
+        }
+      }
+    },
+    {
+      "variant_id": "multi_apps_42d25c08-fb87-4927-8b65-93631280a26f_traj_verify_4",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f_traj_verify_4.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Count the number of txt chapter files in ~/Documents/Novels/Pass Through/ and write just that number to ~/chapter_count.txt.",
+      "sft_seed": {
+        "uuid": "42d25c08-fb87-4927-8b65-93631280a26f",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-0/released/tasks/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/42d25c08-fb87-4927-8b65-93631280a26f/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末步仍在尝试安装转换工具；原题要求将小说转成 EPUB。"
+      },
+      "target_skill": "统计文件并把计数写到指定文件",
+      "evaluator": {
+        "metric_name": "check_file_numeric_content__f36e167c6b956664e01e5e47712b671b_qw35sft2_4e4217aa",
+        "getter_type": "text_file_content__f36e167c6b956664e01e5e47712b671b_qw35sft2_c7971e50"
+      },
+      "offline_check": {
+        "description": "按本地章节归档数出 5 个 txt 文件，目标文件改写为 6。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:3725",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/file.py:1930",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference": 1.0,
+          "wrong": 0.0,
+          "cpu_probe_elapsed_s": 0.003
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "保留·分步",
+      "primary_reason": "component",
+      "rationale": "训练文件枚举与计数写回。该分步题省掉了 EPUB 转换。",
+      "holdout_setup_matches": {
+        "test": {
+          "families": 1,
+          "identical_urls": 0,
+          "names": [
+            ".projects.tar.xz",
+            "aws-invoice-2308.pdf",
+            "aws-invoice-2309.pdf",
+            "aws-invoice-2310.pdf",
+            "aws-invoice-2311.pdf",
+            "aws-invoice-2312.pdf",
+            "tally_book.xlsx",
+            "x-receipt-2312.pdf"
+          ]
+        }
+      }
+    },
+    {
+      "variant_id": "multi_apps_51f5801c-18b3-4f25-b0c3-02f85507a078_traj_verify_4",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/51f5801c-18b3-4f25-b0c3-02f85507a078_traj_verify_4.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Extract all presenter notes from `Dickinson_Slides.pptx` and save them to `notes.docx` on the Desktop. Start the file with a header line 'Slide Notes', followed by each note on its own line.",
+      "sft_seed": {
+        "uuid": "51f5801c-18b3-4f25-b0c3-02f85507a078",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 36,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-2/released/tasks/multi_apps/51f5801c-18b3-4f25-b0c3-02f85507a078/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/51f5801c-18b3-4f25-b0c3-02f85507a078/traj.jsonl",
+        "reviewed_tail_steps": [
+          34,
+          35,
+          36
+        ],
+        "observation": "模型在末步自述 notes.docx 含有备注，原题最终得零。"
+      },
+      "target_skill": "从演示文稿逐条导出备注",
+      "evaluator": {
+        "metric_name": "check_docx_with_header__2354b786c1a1e08afc94d3d722cbb7a6_qw35sft2_f6f184cb",
+        "getter_type": "docx_with_header__2354b786c1a1e08afc94d3d722cbb7a6_qw35sft2_bdd3f828"
+      },
+      "offline_check": {
+        "description": "从原始 PPTX 提取八条备注；把八条合并成一个段落，保留表头。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/docs.py:3209",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/misc.py:6509",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "format_negative": 1.0,
+          "reference": 1.0,
+          "wrong": 0.93,
+          "cpu_probe_elapsed_s": 0.095
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "合并段落也获满分，逐条写入这一目标缺少监督。"
+    },
+    {
+      "variant_id": "multi_apps_58565672-7bfe-48ab-b828-db349231de6b_traj_verify_3",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/58565672-7bfe-48ab-b828-db349231de6b_traj_verify_3.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Find the support link in the most recent email in Thunderbird's Bills folder and save it as a Chrome bookmark.",
+      "sft_seed": {
+        "uuid": "58565672-7bfe-48ab-b828-db349231de6b",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 21,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-3/released/tasks/multi_apps/58565672-7bfe-48ab-b828-db349231de6b/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/58565672-7bfe-48ab-b828-db349231de6b/traj.jsonl",
+        "reviewed_tail_steps": [
+          19,
+          20,
+          21
+        ],
+        "observation": "轨迹末尾模型自述已打开最近邮件中的链接，原题得零。"
+      },
+      "target_skill": "从邮件提取并收藏链接",
+      "evaluator": {
+        "metric_name": "check_bookmark_url__05ce943d8d8f8a475d42f3e635259257_qw35sft2_5347a102",
+        "getter_type": "bookmarks"
+      },
+      "offline_check": {
+        "description": "收藏无关域名，将预期链接放入查询参数中。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/chrome.py:1264",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "cpu_probe_elapsed_s": 0.0
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "错误目的地仍满分。",
+      "holdout_setup_matches": {
+        "dev": {
+          "families": 1,
+          "identical_urls": 0,
+          "names": [
+            "thunderbird-profile.tar.gz"
+          ]
+        },
+        "test": {
+          "families": 1,
+          "identical_urls": 0,
+          "names": [
+            "thunderbird-profile.tar.gz"
+          ]
+        }
+      }
+    },
+    {
+      "variant_id": "multi_apps_5bc63fb9-276a-4439-a7c1-9dc76401737f_traj_verify_3",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/5bc63fb9-276a-4439-a7c1-9dc76401737f_traj_verify_3.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Extract all GEMINI model responses from llm_answers.json on the Desktop and save them into a Word document named gemini_results.docx on the Desktop. Each response should be its own paragraph.",
+      "sft_seed": {
+        "uuid": "5bc63fb9-276a-4439-a7c1-9dc76401737f",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 33,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-3/released/tasks/multi_apps/5bc63fb9-276a-4439-a7c1-9dc76401737f/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/5bc63fb9-276a-4439-a7c1-9dc76401737f/traj.jsonl",
+        "reviewed_tail_steps": [
+          31,
+          32,
+          33
+        ],
+        "observation": "模型最后报告 grep 没有找到目标模型记录。"
+      },
+      "target_skill": "筛选 JSON 并逐段写入 Word",
+      "evaluator": {
+        "metric_name": "check_docx_gemini_paragraphs__abfc7551de3c0f45f173130d54033329_qw35sft2_d5a836b4",
+        "getter_type": "docx_gemini_paragraphs__abfc7551de3c0f45f173130d54033329_qw35sft2_a085b892"
+      },
+      "offline_check": {
+        "description": "创建六个无关段落，只插入两个评分关键字。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/docs.py:3276",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/misc.py:6802",
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.035
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "评分核对段数与两个词，错误正文仍满分。"
+    },
+    {
+      "variant_id": "multi_apps_6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a_traj_verify_3",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a_traj_verify_3.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Fill in all the missing conference venue cities in ConferenceCity.xlsx for ICLR, ICML, and NeurIPS from 2013 to 2019.",
+      "sft_seed": {
+        "uuid": "6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-2/released/tasks/multi_apps/6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/6f4073b8-d8ea-4ade-8a18-c5d1d5d5aa9a/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末步模型刚填写 C3，还准备继续录入。"
+      },
+      "target_skill": "从多来源查城市并补全表格",
+      "evaluator": {
+        "metric_name": "check_sampled_conf_cities__fb22e54de099b00f4d6a127b12703f11_qw35sft2_b8b70a1e",
+        "getter_type": "xlsx_sampled_conf_cities__fb22e54de099b00f4d6a127b12703f11_qw35sft2_e8fe6de6"
+      },
+      "offline_check": {
+        "description": "在 21 行中仅填对三行，其余 18 行写 WRONG。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:5429",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:6219",
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.016
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "未抽查的 18 行全部错误仍满分。"
+    },
+    {
+      "variant_id": "multi_apps_da922383-bfa4-4cd3-bbad-6bebab3d7742_traj_verify_2",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/da922383-bfa4-4cd3-bbad-6bebab3d7742_traj_verify_2.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Save the blog article currently displayed in Chrome as a PDF file to /home/user/Documents/.",
+      "sft_seed": {
+        "uuid": "da922383-bfa4-4cd3-bbad-6bebab3d7742",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-3/released/tasks/multi_apps/da922383-bfa4-4cd3-bbad-6bebab3d7742/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/da922383-bfa4-4cd3-bbad-6bebab3d7742/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末端模型仍在切换到 Blog 输出目录。"
+      },
+      "target_skill": "把指定网页保存为 PDF",
+      "evaluator": {
+        "metric_name": "check_file_count_gte__c0f167f76d6dbaf3d31bd54c91783445",
+        "getter_type": "vm_command_line"
+      },
+      "offline_check": {
+        "description": "在空目录中只放一个与文章无关的 .pdf，执行题面配置的计数命令，仅替换目录。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/general.py:1142",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.004
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "评分只看 PDF 数目，内容错误仍满分。"
+    },
+    {
+      "variant_id": "multi_apps_dd60633f-2c72-42ba-8547-6f2c8cb0fdb0_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/multi_apps/dd60633f-2c72-42ba-8547-6f2c8cb0fdb0_traj_verify_1.json",
+      "variant_domain": "multi_apps",
+      "instruction": "Extract all function and class definition lines from the Colab notebook code cells into 'gpt_defs.txt' in Home directory, one per line.",
+      "sft_seed": {
+        "uuid": "dd60633f-2c72-42ba-8547-6f2c8cb0fdb0",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-2/released/tasks/multi_apps/dd60633f-2c72-42ba-8547-6f2c8cb0fdb0/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/dd60633f-2c72-42ba-8547-6f2c8cb0fdb0/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段模型在阅读 Colab 代码单元中的方法定义。"
+      },
+      "target_skill": "从笔记本抽取定义行",
+      "evaluator": {
+        "metric_name": "check_def_extraction__9f211d2fef2982f0959041bc806f53c4",
+        "getter_type": "def_file__9f211d2fef2982f0959041bc806f53c4"
+      },
+      "offline_check": {
+        "description": "文本里只写五行虚构的类定义。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:3576",
+          "reference": 1.0,
+          "wrong": 1.0,
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/file.py:612",
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.0
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "只验证语法前缀和行数，与源码无关的内容仍满分。"
+    },
+    {
+      "variant_id": "libreoffice_calc_035f41ba-6653-43ab-aa63-c86d449d62e5_traj_verify_0",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/035f41ba-6653-43ab-aa63-c86d449d62e5_traj_verify_0.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Fill in the Net Sales column (E) for each year by calculating Sales minus Sales Return minus Discounts and Allowances.",
+      "sft_seed": {
+        "uuid": "035f41ba-6653-43ab-aa63-c86d449d62e5",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 48,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-3/released/tasks/libreoffice_calc/035f41ba-6653-43ab-aa63-c86d449d62e5/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/035f41ba-6653-43ab-aa63-c86d449d62e5/traj.jsonl",
+        "reviewed_tail_steps": [
+          46,
+          47,
+          48
+        ],
+        "observation": "末段模型在核对第二表的年度毛利润字符串。"
+      },
+      "target_skill": "逐行计算九年的净销售额",
+      "evaluator": {
+        "metric_name": "check_column_values__312ae9a7a4fdef961589d00f7ec76217",
+        "getter_type": "xlsx_column_values__312ae9a7a4fdef961589d00f7ec76217"
+      },
+      "offline_check": {
+        "description": "用原始 B−C−D 逐行计算九年，改错最后一个目标单元格。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:3031",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:651",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "E2": 74000,
+            "E3": 68260,
+            "E4": 73591,
+            "E5": 80451,
+            "E6": 80577,
+            "E7": 76415,
+            "E8": 77913,
+            "E9": 67882,
+            "E10": 62627
+          },
+          "reference": 1.0,
+          "wrong": 0.888889,
+          "changed_cell": "E10",
+          "cpu_probe_elapsed_s": 0.028
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "保留·分步",
+      "primary_reason": "component",
+      "rationale": "逐行核对源数据对应的结果，保留毛利润计算前的净销售额环节。"
+    },
+    {
+      "variant_id": "libreoffice_calc_0a2e43bf-b26c-4631-a966-af9dfa12c9e5_traj_verify_0",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/0a2e43bf-b26c-4631-a966-af9dfa12c9e5_traj_verify_0.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Add a 'Total' row below the sales data that sums each month's sales across all reps.",
+      "sft_seed": {
+        "uuid": "0a2e43bf-b26c-4631-a966-af9dfa12c9e5",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 33,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-1/released/tasks/libreoffice_calc/0a2e43bf-b26c-4631-a966-af9dfa12c9e5/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/0a2e43bf-b26c-4631-a966-af9dfa12c9e5/traj.jsonl",
+        "reviewed_tail_steps": [
+          31,
+          32,
+          33
+        ],
+        "observation": "模型自述已经填了 Total 行和各月合计，整道原题得零。"
+      },
+      "target_skill": "按月汇总各销售人员业绩",
+      "evaluator": {
+        "metric_name": "check_row_values__4551fb3f098ec9fe882ac83568cd431f",
+        "getter_type": "xlsx_row_by_label__4551fb3f098ec9fe882ac83568cd431f"
+      },
+      "offline_check": {
+        "description": "从六个月数据计算列总计，改错一个月。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:1396",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:4108",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "A12": "Total",
+            "B12": 4852,
+            "C12": 4587,
+            "D12": 3943,
+            "E12": 3857,
+            "F12": 4677,
+            "G12": 4243
+          },
+          "reference": 1.0,
+          "wrong": 0.833333,
+          "changed_cell": "G12",
+          "cpu_probe_elapsed_s": 0.023
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "排除",
+      "primary_reason": "shared_key_input_with_holdout",
+      "rationale": "数值评分有效，但测试划分使用同一份 SalesRep.xlsx 下载源，保留现有测试划分。",
+      "holdout_setup_matches": {
+        "test": {
+          "families": 1,
+          "identical_urls": 1,
+          "names": [
+            "salesrep.xlsx"
+          ]
+        }
+      },
+      "key_input_overlap": {
+        "file": "SalesRep.xlsx",
+        "split": "test",
+        "uuid": "0326d92d-d218-48a8-9ca1-981cd6d064c7",
+        "match": "identical_download_url"
+      }
+    },
+    {
+      "variant_id": "libreoffice_calc_1d17d234-e39d-4ed7-b46f-4417922a4e7c_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/1d17d234-e39d-4ed7-b46f-4417922a4e7c_traj_verify_1.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Add a \"Future Value\" header in cell F1 of Sheet1 and calculate the future value for each investment in F2:F5 using the formula PV*(1+Rate)^Years.",
+      "sft_seed": {
+        "uuid": "1d17d234-e39d-4ed7-b46f-4417922a4e7c",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-2/released/tasks/libreoffice_calc/1d17d234-e39d-4ed7-b46f-4417922a4e7c/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/1d17d234-e39d-4ed7-b46f-4417922a4e7c/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段还在 Format 菜单查找合并单元格。"
+      },
+      "target_skill": "按投资初值、利率和年限计算终值",
+      "evaluator": {
+        "metric_name": "check_fv_column__5c1e2dfe8bffbdb20d88aa7499677c46",
+        "getter_type": "xlsx_fv_column__5c1e2dfe8bffbdb20d88aa7499677c46"
+      },
+      "offline_check": {
+        "description": "按 PV×(1+Rate)^Years 重算四行并改错一行。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:2623",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:4291",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "F1": "Future Value",
+            "F2": 8503.595582025599,
+            "F3": 25575.392591146418,
+            "F4": 346796.33492086426,
+            "F5": 935935.1439490563
+          },
+          "reference": 1.0,
+          "wrong": 0.8,
+          "changed_cell": "F5",
+          "cpu_probe_elapsed_s": 0.021
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "排除",
+      "primary_reason": "variant_drops_target_skill",
+      "rationale": "变体考复利，轨迹显示的障碍是合并单元格，首批弱项配额不收。"
+    },
+    {
+      "variant_id": "libreoffice_calc_1de60575-bb6e-4c3d-9e6a-2fa699f9f197_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/1de60575-bb6e-4c3d-9e6a-2fa699f9f197_traj_verify_1.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Count the number of 'In Store Sales' transactions in column E using a COUNTIF formula in cell H2.",
+      "sft_seed": {
+        "uuid": "1de60575-bb6e-4c3d-9e6a-2fa699f9f197",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-1/released/tasks/libreoffice_calc/1de60575-bb6e-4c3d-9e6a-2fa699f9f197/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/1de60575-bb6e-4c3d-9e6a-2fa699f9f197/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段已将 Revenue 拖入透视表数据区，还在设置目标位置。"
+      },
+      "target_skill": "按销售渠道做条件计数",
+      "evaluator": {
+        "metric_name": "check_cell_value_numeric__ad5647b3d1b47a9e1996a6e69ca9562d",
+        "getter_type": "xlsx_cell_value__ad5647b3d1b47a9e1996a6e69ca9562d"
+      },
+      "offline_check": {
+        "description": "从原表计数 In Store Sales，在 H2 改写为错误数字。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:740",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:3592",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "H2": 830
+          },
+          "reference": 1.0,
+          "wrong": 0.0,
+          "changed_cell": "H2",
+          "cpu_probe_elapsed_s": 1.133
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "保留·分步",
+      "primary_reason": "component",
+      "rationale": "可练条件聚合与写入；评分验证结果值，COUNTIF 的使用及透视表操作无独立验证。"
+    },
+    {
+      "variant_id": "libreoffice_calc_26a8440e-c166-4c50-aef4-bfb77314b46b_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/26a8440e-c166-4c50-aef4-bfb77314b46b_traj_verify_1.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Create a new sheet named \"Summary\" with columns \"Sales Rep\" and \"Total\" listing each rep's total sales across all months.",
+      "sft_seed": {
+        "uuid": "26a8440e-c166-4c50-aef4-bfb77314b46b",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 19,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-1/released/tasks/libreoffice_calc/26a8440e-c166-4c50-aef4-bfb77314b46b/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/26a8440e-c166-4c50-aef4-bfb77314b46b/traj.jsonl",
+        "reviewed_tail_steps": [
+          17,
+          18,
+          19
+        ],
+        "observation": "模型自述在 Sheet2 写完了按月合计，原题最终得零。"
+      },
+      "target_skill": "跨表生成按人汇总的销售额",
+      "evaluator": {
+        "metric_name": "check_summary_rep_totals__8a3eb44c98a42fd6dcd94122bb8b7a9a",
+        "getter_type": "xlsx_summary_rep_totals__8a3eb44c98a42fd6dcd94122bb8b7a9a"
+      },
+      "offline_check": {
+        "description": "使用原始月数据为十人逐一求和，在 Summary 改错一人。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:1002",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:2016",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "A1": "Sales Rep",
+            "B1": "Total",
+            "A2": "Ivelisse Peel",
+            "B2": 2894,
+            "A3": "Sigrid Grooms",
+            "B3": 2450,
+            "A4": "Majorie Flaherty",
+            "B4": 2253,
+            "A5": "Stevie Fisk",
+            "B5": 2648,
+            "A6": "Nova Bolduc",
+            "B6": 2439,
+            "A7": "Naoma Moyer",
+            "B7": 2952,
+            "A8": "Eric Minter",
+            "B8": 2481,
+            "A9": "Dotty Dorn",
+            "B9": 2574,
+            "A10": "Kandice Hussey",
+            "B10": 3000,
+            "A11": "Cleo Nixon",
+            "B11": 2468
+          },
+          "reference": 1.0,
+          "wrong": 0.92,
+          "changed_cell": "B2",
+          "cpu_probe_elapsed_s": 0.028
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "排除",
+      "primary_reason": "shared_key_input_with_holdout",
+      "rationale": "数值评分有效，SalesRep.xlsx 与测试划分的下载源相同。",
+      "holdout_setup_matches": {
+        "test": {
+          "families": 1,
+          "identical_urls": 1,
+          "names": [
+            "salesrep.xlsx"
+          ]
+        }
+      },
+      "key_input_overlap": {
+        "file": "SalesRep.xlsx",
+        "split": "test",
+        "uuid": "0326d92d-d218-48a8-9ca1-981cd6d064c7",
+        "match": "identical_download_url"
+      }
+    },
+    {
+      "variant_id": "libreoffice_calc_347ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/347ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_1.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Calculate how much more was spent on Gas & Electric in 2019 compared to 2020. Put the difference (2019 total minus 2020 total) in cell B33.",
+      "sft_seed": {
+        "uuid": "347ef137-7eeb-4c80-a3bb-0951f26a8aff",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-3/released/tasks/libreoffice_calc/347ef137-7eeb-4c80-a3bb-0951f26a8aff/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/347ef137-7eeb-4c80-a3bb-0951f26a8aff/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段模型报告已完成 2019 年图表，尚未在该段展示第二年结果。"
+      },
+      "target_skill": "跨年份汇总并计算费用差额",
+      "evaluator": {
+        "metric_name": "check_cell_numeric_close__12cf17c32a6915e1266996d25d563e2a",
+        "getter_type": "xlsx_cell_value__12cf17c32a6915e1266996d25d563e2a"
+      },
+      "offline_check": {
+        "description": "计算两年每月明细之差 515−460，在 B33 改错结果。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:1755",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:3245",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "B33": 55
+          },
+          "reference": 1.0,
+          "wrong": 0.0,
+          "changed_cell": "B33",
+          "cpu_probe_elapsed_s": 0.05
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "保留·分步",
+      "primary_reason": "component",
+      "rationale": "能训练从同一工作表的两个年度区段取值并写差额，转移的是比较和汇总环节。"
+    },
+    {
+      "variant_id": "libreoffice_calc_357ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_3",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/357ef137-7eeb-4c80-a3bb-0951f26a8aff_traj_verify_3.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Fill E3 with the total earned amount (time × rate), then enter the 20% income tax deduction for that amount in E4. Save the file.",
+      "sft_seed": {
+        "uuid": "357ef137-7eeb-4c80-a3bb-0951f26a8aff",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-0/released/tasks/libreoffice_calc/357ef137-7eeb-4c80-a3bb-0951f26a8aff/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/357ef137-7eeb-4c80-a3bb-0951f26a8aff/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "模型报告公式以文本显示，并称单元格值没有更新。"
+      },
+      "target_skill": "把工时换算为收入并计算税额",
+      "evaluator": {
+        "metric_name": "check_calc_earned_and_tax__2412d7535e20b0348d2c25accb946746_qw35sft2_41466692",
+        "getter_type": "calc_multi_cells__2412d7535e20b0348d2c25accb946746_qw35sft2_de3f29eb"
+      },
+      "offline_check": {
+        "description": "按源表 7 小时 40 分和费率 25 计算收入和税，把税额改错。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:3242",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:5306",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "E3": 191.66666666666669,
+            "E4": 38.333333333333336
+          },
+          "reference": 1.0,
+          "wrong": 0.5,
+          "changed_cell": "E4",
+          "cpu_probe_elapsed_s": 0.075
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "桌面复核",
+      "primary_reason": "needs_desktop_evidence",
+      "rationale": "数值产物通过。需在 Calc 中输入公式、保存再读，定位时间格式及公式缓存与原轨迹的关系。"
+    },
+    {
+      "variant_id": "libreoffice_calc_4e6fcf72-daf3-439f-a232-c434ce416af6_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/4e6fcf72-daf3-439f-a232-c434ce416af6_traj_verify_1.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Find the youngest employee (most recent birthday) and write their full name in cell E2.",
+      "sft_seed": {
+        "uuid": "4e6fcf72-daf3-439f-a232-c434ce416af6",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 29,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-3/released/tasks/libreoffice_calc/4e6fcf72-daf3-439f-a232-c434ce416af6/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/4e6fcf72-daf3-439f-a232-c434ce416af6/traj.jsonl",
+        "reviewed_tail_steps": [
+          27,
+          28,
+          29
+        ],
+        "observation": "最后模型报告已保存年龄表，原题得零。"
+      },
+      "target_skill": "按出生日期取最年轻员工",
+      "evaluator": {
+        "metric_name": "check_cell_value__02d2303f1946e73506bf1a1871c3326e",
+        "getter_type": "xlsx_cell_value__02d2303f1946e73506bf1a1871c3326e"
+      },
+      "offline_check": {
+        "description": "从日期列选择最新生日，将 E2 的人名改错。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:1575",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:3063",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "E2": "Olivia Calme"
+          },
+          "reference": 1.0,
+          "wrong": 0.0,
+          "changed_cell": "E2",
+          "cpu_probe_elapsed_s": 0.03
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "排除",
+      "primary_reason": "variant_drops_target_skill",
+      "rationale": "评分能核对姓名；选出单个人名省掉原题的年龄计算和整列写回。"
+    },
+    {
+      "variant_id": "libreoffice_calc_51719eea-10bc-4246-a428-ac7c433dd4b3_traj_verify_2",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/51719eea-10bc-4246-a428-ac7c433dd4b3_traj_verify_2.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "In the BoomerangSales spreadsheet, add a new column G with header 'Retail Price'. Use VLOOKUP to fill in the retail price for each product from the Retail Price sheet.",
+      "sft_seed": {
+        "uuid": "51719eea-10bc-4246-a428-ac7c433dd4b3",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-2/released/tasks/libreoffice_calc/51719eea-10bc-4246-a428-ac7c433dd4b3/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/51719eea-10bc-4246-a428-ac7c433dd4b3/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "模型报告 H2 有收入，但 H3:H36 仍空或为零。"
+      },
+      "target_skill": "跨工作表按产品查价",
+      "evaluator": {
+        "metric_name": "check_vlookup_prices__40371a0bf41fabc605f9425ce4121622",
+        "getter_type": "xlsx_column_values__40371a0bf41fabc605f9425ce4121622"
+      },
+      "offline_check": {
+        "description": "直接从商品价格表连接 35 笔订单，改错 G2 的价格。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:2344",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:2049",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "G1": "Retail Price",
+            "G2": 21.95,
+            "G3": 23.95,
+            "G4": 25,
+            "G5": 39.95,
+            "G6": 17.95,
+            "G7": 250,
+            "G8": 25,
+            "G9": 22,
+            "G10": 14,
+            "G11": 43,
+            "G12": 39.95,
+            "G13": 5,
+            "G14": 21.95,
+            "G15": 75,
+            "G16": 21.95,
+            "G17": 21.95,
+            "G18": 5,
+            "G19": 5,
+            "G20": 5,
+            "G21": 21.95,
+            "G22": 5,
+            "G23": 120,
+            "G24": 43,
+            "G25": 20,
+            "G26": 22,
+            "G27": 24,
+            "G28": 5,
+            "G29": 26,
+            "G30": 5,
+            "G31": 5,
+            "G32": 75,
+            "G33": 21.95,
+            "G34": 75,
+            "G35": 5,
+            "G36": 17.95
+          },
+          "reference": 1.0,
+          "wrong": 0.977143,
+          "changed_cell": "G2",
+          "cpu_probe_elapsed_s": 0.043
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "保留·分步",
+      "primary_reason": "component",
+      "rationale": "适合训练整列查价并写回，评分衡量数值及表头，不能证明使用了 VLOOKUP。"
+    },
+    {
+      "variant_id": "libreoffice_calc_7f35355e-02a6-45b5-b140-f0be698bcf85_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/7f35355e-02a6-45b5-b140-f0be698bcf85_traj_verify_1.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Find the stock with the highest price in stock.xlsx and save the ticker symbol and price to /home/user/Desktop/result.txt.",
+      "sft_seed": {
+        "uuid": "7f35355e-02a6-45b5-b140-f0be698bcf85",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-2/released/tasks/multi_apps/7f35355e-02a6-45b5-b140-f0be698bcf85/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/7f35355e-02a6-45b5-b140-f0be698bcf85/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末端重复点击 File 菜单，原题要求先导出再统计。"
+      },
+      "target_skill": "找最高股票价格并把代码和价格写到文本",
+      "evaluator": {
+        "metric_name": "check_highest_price__4c5e4ba8ba69ff54d1e2443439646d44",
+        "getter_type": "result_file_content__4c5e4ba8ba69ff54d1e2443439646d44"
+      },
+      "offline_check": {
+        "description": "把股票代码和价格都改错成 WPOX 1383.27。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:3325",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/file.py:1547",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference": 1.0,
+          "wrong": 0.0,
+          "wrong_artifact": 1.0,
+          "cpu_probe_elapsed_s": 0.017
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "两个错误字符串均包含预期子串，文件仍获满分。"
+    },
+    {
+      "variant_id": "libreoffice_calc_881deb30-9549-4583-a841-8270c65f2a17_traj_verify_1",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/881deb30-9549-4583-a841-8270c65f2a17_traj_verify_1.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Open the ecs23.pdf file from ~/Documents/Fundings/ecs/ and find the total number of ECS applications across all schools for 2023. Enter that number in cell B2 of supported_rate.xlsx.",
+      "sft_seed": {
+        "uuid": "881deb30-9549-4583-a841-8270c65f2a17",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23495234/full/rank-0/released/tasks/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "最后仍在终端查找 Fundings 目录。"
+      },
+      "target_skill": "从资助报告读取总数并填入表格",
+      "evaluator": {
+        "metric_name": "check_cell_value__fec4261d3cbd8743e0d3445b3fa0111f",
+        "getter_type": "xlsx_cell_value__fec4261d3cbd8743e0d3445b3fa0111f"
+      },
+      "offline_check": {
+        "description": "原始 2023 PDF 合计行显示 525，改错 B2。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:1532",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:4177",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "B2": 525
+          },
+          "reference": 1.0,
+          "wrong": 0.0,
+          "changed_cell": "B2",
+          "other_cached_families_with_same_pdf": [
+            "7e287123-70ca-47b9-8521-47db09b69b14"
+          ],
+          "cpu_probe_elapsed_s": 0.034
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "排除",
+      "primary_reason": "shared_key_input_with_holdout",
+      "rationale": "该 PDF 与 dev 家族的文件字节相同；题面还将全校 2023 总数写入原模板 2015／CityU 的位置。",
+      "holdout_setup_matches": {
+        "dev": {
+          "families": 1,
+          "identical_urls": 0,
+          "names": [
+            "customer-information-sheet-for-inward-payments-to-hong-kong.pdf",
+            "ecs15.pdf",
+            "ecs16.pdf",
+            "ecs17.pdf",
+            "ecs18.pdf",
+            "ecs19.pdf",
+            "ecs20.pdf",
+            "ecs21.pdf",
+            "ecs22.pdf",
+            "ecs23.pdf",
+            "grf15.pdf",
+            "grf16.pdf",
+            "grf17.pdf",
+            "grf18.pdf",
+            "grf19.pdf",
+            "grf20.pdf"
+          ]
+        }
+      },
+      "key_input_overlap": {
+        "file": "ecs23.pdf",
+        "split": "dev",
+        "uuid": "7e287123-70ca-47b9-8521-47db09b69b14",
+        "match": "identical_sha256",
+        "sha256": "813ccb13a3293f4506998b0c0041099b8d6827ec9090942adcdb61292dd2da07"
+      }
+    },
+    {
+      "variant_id": "libreoffice_calc_8e116af7-7db7-4e35-a68b-b0939c066c78_traj_verify_2",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/8e116af7-7db7-4e35-a68b-b0939c066c78_traj_verify_2.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Open receipt_3.pdf on the Desktop and record its total as a repair expense in the next empty row of the bookkeeping sheet.",
+      "sft_seed": {
+        "uuid": "8e116af7-7db7-4e35-a68b-b0939c066c78",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-2/released/tasks/multi_apps/8e116af7-7db7-4e35-a68b-b0939c066c78/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/8e116af7-7db7-4e35-a68b-b0939c066c78/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段模型仍在等待安装并请求截图，缺少成功写回证据。"
+      },
+      "target_skill": "从收据识别维修金额并记账",
+      "evaluator": {
+        "metric_name": "check_repair_entry__c6556bc153411ec2613fae626891d4a6",
+        "getter_type": "xlsx_row_data__c6556bc153411ec2613fae626891d4a6"
+      },
+      "offline_check": {
+        "description": "按收据总额 154.06 写负数；保留金额与 Expense，把说明和分类均改为无关内容。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:2256",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:954",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "A9": "Repair expense",
+            "B9": "Repairs",
+            "C9": "Expense",
+            "D9": -154.06
+          },
+          "reference": 1.0,
+          "category_negative": 1.0,
+          "wrong": 0.5,
+          "changed_cell": "D9",
+          "cpu_probe_elapsed_s": 0.042
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "错误维修类别仍满分。金额单独改错会扣分。"
+    },
+    {
+      "variant_id": "libreoffice_calc_aceb0368-56b8-4073-b70e-3dc9aee184e0_traj_verify_0",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/aceb0368-56b8-4073-b70e-3dc9aee184e0_traj_verify_0.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Grade Richard Smith's exam (answer_sheet1.docx) against the reference answers. Fill in 1 for correct, 0 for incorrect in his row of the grades spreadsheet, and enter the total grade.",
+      "sft_seed": {
+        "uuid": "aceb0368-56b8-4073-b70e-3dc9aee184e0",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-3/released/tasks/multi_apps/aceb0368-56b8-4073-b70e-3dc9aee184e0/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/aceb0368-56b8-4073-b70e-3dc9aee184e0/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "末段才打开终端，准备检查 exam 目录。"
+      },
+      "target_skill": "比对两份 Word 答卷并将分项和总分写回表格",
+      "evaluator": {
+        "metric_name": "check_row_scores__1700c01d5ad41ab8401de0bafb801990",
+        "getter_type": "xlsx_row_scores__1700c01d5ad41ab8401de0bafb801990"
+      },
+      "offline_check": {
+        "description": "解开原始 exam.zip，逐题比对该生与参考答案的 10 个选项，写入其成绩行并改错总分。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:2827",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:270",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "C3": 1,
+            "D3": 1,
+            "E3": 0,
+            "F3": 1,
+            "G3": 1,
+            "H3": 0,
+            "I3": 1,
+            "J3": 0,
+            "K3": 1,
+            "L3": 1,
+            "M3": 70
+          },
+          "reference": 1.0,
+          "wrong": 0.909091,
+          "changed_cell": "M3",
+          "cpu_probe_elapsed_s": 0.059
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "保留·主练",
+      "primary_reason": "end_to_end",
+      "rationale": "源文件独立算得 7 题正确、总分 70，评分核对对应成绩行的全部 11 格。"
+    },
+    {
+      "variant_id": "libreoffice_calc_b5062e3e-641c-4e3a-907b-ac864d2e7652_traj_verify_2",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/b5062e3e-641c-4e3a-907b-ac864d2e7652_traj_verify_2.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Create a spreadsheet at ~/filenames.xlsx with header 'Filename' in cell A1, then list each PDF filename from ~/Documents/Papers/ in cells A2 through A5, sorted alphabetically.",
+      "sft_seed": {
+        "uuid": "b5062e3e-641c-4e3a-907b-ac864d2e7652",
+        "domain": "multi_apps",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23487614/full/rank-0/released/tasks/multi_apps/b5062e3e-641c-4e3a-907b-ac864d2e7652/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/b5062e3e-641c-4e3a-907b-ac864d2e7652/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "模型报告已提取一篇论文的文本，准备处理其余论文并建表。"
+      },
+      "target_skill": "把目录中的 PDF 文件名按字母顺序写入新表",
+      "evaluator": {
+        "metric_name": "check_xlsx_filenames__aad13293a214d4a4614be1039d459c78",
+        "getter_type": "xlsx_column_values__aad13293a214d4a4614be1039d459c78"
+      },
+      "offline_check": {
+        "description": "按 setup 指定的四个目标文件名排序，给首个 PDF 文件名加 .bak。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:792",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:2075",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "A1": "Filename",
+            "A2": "deng_mind2web.pdf",
+            "A3": "koh_visualwebarena.pdf",
+            "A4": "niu_screenagent.pdf",
+            "A5": "zhang_appagent.pdf"
+          },
+          "reference": 1.0,
+          "suffix_negative": 1.0,
+          "wrong": 0.8,
+          "changed_cell": "A5",
+          "cpu_probe_elapsed_s": 0.02
+        },
+        "wrong_output_received_full_credit": true
+      },
+      "decision": "排除",
+      "primary_reason": "wrong_output_full_credit",
+      "rationale": "错误文件名仍满分，原题需要的作者、邮箱及单位提取也已省略。"
+    },
+    {
+      "variant_id": "libreoffice_calc_d681960f-7bc3-4286-9913-a8812ba3261a_traj_verify_3",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/d681960f-7bc3-4286-9913-a8812ba3261a_traj_verify_3.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "Using the grading scale in the spreadsheet, fill in the grades for Benedict, Blake, and Bey in the Message column (F10, F11, F12).",
+      "sft_seed": {
+        "uuid": "d681960f-7bc3-4286-9913-a8812ba3261a",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 34,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-2/released/tasks/libreoffice_calc/d681960f-7bc3-4286-9913-a8812ba3261a/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/d681960f-7bc3-4286-9913-a8812ba3261a/traj.jsonl",
+        "reviewed_tail_steps": [
+          32,
+          33,
+          34
+        ],
+        "observation": "原题末步模型自述等级已经填好，整题得零。"
+      },
+      "target_skill": "按评分区间查等级并写入三个指定单元格",
+      "evaluator": {
+        "metric_name": "check_multi_cell_grade__3b5b28cd38bc58813bd97e9b2f5d4ad4_qw35sft2_e971eac3",
+        "getter_type": "xlsx_multi_cell__3b5b28cd38bc58813bd97e9b2f5d4ad4_qw35sft2_ebc90768"
+      },
+      "offline_check": {
+        "description": "按原表区间对 42、94、33 分分别查等级，在 F12 改错。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/excel.py:2715",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:4571",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "F10": "Pass",
+            "F11": "Excellent",
+            "F12": "Pass"
+          },
+          "reference": 1.0,
+          "wrong": 0.666667,
+          "changed_cell": "F12",
+          "cpu_probe_elapsed_s": 0.03
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "桌面复核",
+      "primary_reason": "needs_desktop_evidence",
+      "rationale": "静态评分正常。真实桌面上检查 SFT 是否本来就能完成这三格，以及原题零分是否来自其他行或越界编辑。"
+    },
+    {
+      "variant_id": "libreoffice_calc_f9584479-3d0d-4c79-affa-9ad7afdd8850_traj_verify_0",
+      "variant_path": "data/ScaleCUA/osworld/rl_tasks/libreoffice_calc/f9584479-3d0d-4c79-affa-9ad7afdd8850_traj_verify_0.json",
+      "variant_domain": "libreoffice_calc",
+      "instruction": "In the Zone 1 section of the spreadsheet, add a Total column (F) that sums Q1 through Q4 for each product.",
+      "sft_seed": {
+        "uuid": "f9584479-3d0d-4c79-affa-9ad7afdd8850",
+        "domain": "libreoffice_calc",
+        "score": 0.0,
+        "action_count": 50,
+        "trace_path": "runs/ais-sft-evaluations/23464108/full/rank-0/released/tasks/libreoffice_calc/f9584479-3d0d-4c79-affa-9ad7afdd8850/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/libreoffice_calc/f9584479-3d0d-4c79-affa-9ad7afdd8850/traj.jsonl",
+        "reviewed_tail_steps": [
+          48,
+          49,
+          50
+        ],
+        "observation": "最后模型仍在填写另一区域的 SUM，准备转到下一列。"
+      },
+      "target_skill": "按产品汇总四个季度",
+      "evaluator": {
+        "metric_name": "check_zone1_row_totals__b15b7a7665c71e3a9519658d5a13d57f",
+        "getter_type": "xlsx_cells_zone1_row_totals__b15b7a7665c71e3a9519658d5a13d57f"
+      },
+      "offline_check": {
+        "description": "用原始四季度逐行求和，改错 F5。",
+        "scores_and_evidence": {
+          "metric": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_metrics/others.py:3407",
+          "getter": "data/ScaleCUA/osworld/judge_functions/rl_tasks/verigen_getters/calc.py:1293",
+          "initial_file": 0.0,
+          "initial_scope": "提供的初始文件或尚未创建的目标文件，未执行 VM setup",
+          "reference_cells": {
+            "F3": 14451,
+            "F4": 10781,
+            "F5": 11091
+          },
+          "reference": 1.0,
+          "wrong": 0.666667,
+          "changed_cell": "F5",
+          "cpu_probe_elapsed_s": 0.035
+        },
+        "wrong_output_received_full_credit": false
+      },
+      "decision": "保留·分步",
+      "primary_reason": "component",
+      "rationale": "三项产品都按结果给分，保留原题缺失总计中的行汇总步骤。"
+    }
+  ]
+}

@@ -25,8 +25,10 @@ class FrontierCollectorTest(unittest.TestCase):
                 with counter_lock:
                     calls[self.path] += 1
                     request_number = calls[self.path]
+                sid = self.headers.get('session_id', '1')
                 if self.path == '/start_sample':
                     task = payload['custom_task']['index']
+                    sid = '1' if task == 'test-task' else '2'
                     self.server.test.assertIn(task, {'test-task', 'next-task'})
                     starts.append(task)
                     data = {'finish': False, 'messages': [{'role': 'user', 'content': 'test'}]}
@@ -35,6 +37,8 @@ class FrontierCollectorTest(unittest.TestCase):
                     data = {'choices': [{'message': {'role': 'assistant', 'content': 'done'}}]}
                 elif self.path == '/interact':
                     data = {'finish': True, 'status': 'completed', 'reward': 1}
+                    if payload['messages'][0].get('content') == 'Done.':
+                        data['reward'] = int(sid == '2')
                     if request_number == 6:
                         data = {'finish': True, 'status': 'task error'}
                 else:
@@ -42,7 +46,7 @@ class FrontierCollectorTest(unittest.TestCase):
                     data = {}
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
-                self.send_header('session_id', '1')
+                self.send_header('session_id', sid)
                 self.end_headers()
                 self.wfile.write(json.dumps(data).encode())
 
@@ -93,6 +97,17 @@ class FrontierCollectorTest(unittest.TestCase):
                                capture_output=True, text=True, timeout=40)
                 self.assertEqual(starts[-8:], ['test-task'] * 4 + ['next-task'] * 4)
                 self.assertEqual(len(list(folder.glob('*/*/result.json'))), 8)
+                folder = base / 'formal'
+                before = calls.copy()
+                subprocess.run(cmd + ['--output', str(folder), '--screening', '--check-initial-state',
+                                      '--concurrency', '2'], check=True, capture_output=True, text=True, timeout=40)
+                self.assertEqual(calls['/start_sample'] - before['/start_sample'], 6)
+                self.assertEqual(calls['/chat/completions'] - before['/chat/completions'], 4)
+                self.assertEqual(json.loads((folder / 'test-task/initial-state.json').read_text())['status'], 'passed')
+                self.assertEqual(json.loads((folder / 'next-task/initial-state.json').read_text())['status'],
+                                 'nonzero_initial_reward')
+                self.assertEqual(len(list((folder / 'test-task').glob('*/result.json'))), 4)
+                self.assertFalse(list((folder / 'next-task').glob('*/result.json')))
             finally:
                 server.shutdown()
                 worker.join()

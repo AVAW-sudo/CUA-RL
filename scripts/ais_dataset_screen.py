@@ -9,6 +9,7 @@ import re
 import shutil
 import signal
 import sys
+import threading
 
 from ais_frontier import run_collector, wait_for_shards
 from ais_frontier_shards import read, require_equivalent_protocol, verify_attempt
@@ -61,7 +62,20 @@ def checked_score(slot, task, number, protocol):
     return row
 
 
-def coverage(out, tasks, protocol):
+def validate_control(control, task):
+    status = control.get('status')
+    if control.get('task_index') != task or status not in ('passed', 'nonzero_initial_reward', 'unavailable'):
+        raise ValueError(f'Invalid initial-state receipt for {task}')
+    reward = control.get('reward')
+    if status == 'unavailable':
+        if reward is not None:
+            raise ValueError(f'Unavailable control has a reward for {task}')
+    elif (not control.get('session_id') or type(reward) not in (int, float) or not 0 <= reward <= 1
+          or (reward == 0) != (status == 'passed')):
+        raise ValueError(f'Invalid initial-state reward for {task}')
+
+
+def coverage(out, tasks, protocol, *, overnight=False):
     rows = {}
     for task in tasks:
         rewards, missing = [], {}
@@ -76,6 +90,12 @@ def coverage(out, tasks, protocol):
                 rewards.append(None)
         rows[task] = {'raw_rewards': rewards, 'unscored': missing,
                       'full_credit_rate': None if missing else rewards.count(1) / 4}
+        if overnight:
+            control = read(out / 'episodes' / task / 'initial-state.json')
+            validate_control(control, task)
+            if control['status'] != 'passed' and any(v is not None for v in rewards):
+                raise ValueError(f'Unexpected scores without a zero baseline for {task}')
+            rows[task]['initial_state'] = control
     return rows
 
 
@@ -98,6 +118,19 @@ def restore(source, out, tasks, protocol, cohort):
                                      indices_sha256=protocol['indices_sha256']), protocol)
     kept = 0
     for task in source_tasks:
+        if cohort.get('initial_state_check'):
+            previous_control = source / 'episodes' / task / 'initial-state.json'
+            control = read(previous_control) if previous_control.is_file() else None
+            if not control or control['status'] == 'unavailable':
+                if any((source / 'episodes' / task).glob('*/result.json')):
+                    raise ValueError(f'Missing verified control for scored {task}')
+                continue
+            validate_control(control, task)
+            if control['status'] != 'passed' and any((source / 'episodes' / task).glob('*/result.json')):
+                raise ValueError(f'Unexpected scores under a rejected initial state for {task}')
+            dest = out / 'episodes' / task
+            dest.mkdir(parents=True, exist_ok=True)
+            save(dest / 'initial-state.json', control)
         for trial in range(1, 5):
             old = source / 'episodes' / task / str(trial)
             if not (old / 'result.json').is_file():
@@ -138,11 +171,22 @@ def merge(directory, batch, runtime):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--indices', type=Path, help='Override the default consecutive screening batches')
+    parser.add_argument('--overnight', action='store_true', help='Run the frozen overnight queue and export the prompt set')
     parser.add_argument('--plan', action='store_true', help='Print the eight shards without starting services')
     parser.add_argument('--reuse-from', metavar='JOB_ID', help='Reuse verified scored slots from this screening job')
     parser.add_argument('--desktops-per-rank', type=int, choices=range(1, 9), default=2)
     args = parser.parse_args()
+    if args.overnight:
+        from overnight_prompts import MANIFEST, export, publish_latest
+        if args.indices:
+            parser.error('The overnight prompt export uses its frozen task manifest')
+        args.indices = MANIFEST
     batch = plan(args.indices, args.desktops_per_rank)
+    if args.overnight:
+        # Freeze the exporter to this job even if the shared checkout is updated later.
+        roster = sorted((8 * n + rank, task) for rank, shard in enumerate(batch['shards'])
+                        for n, task in enumerate(shard))
+        candidates = [task for _, task in roster]
     if args.plan:
         print(json.dumps(batch, indent=2))
         return
@@ -163,6 +207,8 @@ def main():
               'desktops_per_rank': args.desktops_per_rank, 'reused_slots': 0}
     print(f'AIS dataset screening rank {rank} | {len(tasks)} tasks | {out}', flush=True)
     save(out / 'status.json', status)
+    stop_export = threading.Event()
+    reporter = None
     try:
         cache = ROOT.parent.parent / 'ENV/cache'
         runtime = {name: read(path)['sha256'] for name, path in {
@@ -170,6 +216,8 @@ def main():
             'policy': Path(os.getenv('CUA_POLICY_MANIFEST', cache / 'ais-frontier-vllm/manifest.json')),
             'fixtures': cache / 'ais-sft-osworld-inputs/manifest.json'}.items()}
         runtime['model_revision'] = read(ROOT / 'configs/sources.lock.json')['sft_model']['revision']
+        if args.overnight:
+            runtime['initial_state_check'] = 'untouched-done-v1'
         cohort = dict(runtime, batch_sha256=batch['batch_sha256'], rank=rank, tasks=tasks)
         save(out / 'cohort.json', cohort)
         protocol = expected_protocol(indices)
@@ -180,22 +228,43 @@ def main():
             if status['reused_slots']:
                 reused_protocol = out / 'reuse-protocol.json'
                 save(reused_protocol, protocol)
+        if args.overnight and rank == 0:
+            def snapshots():
+                while not stop_export.is_set():
+                    try:
+                        export(out.parent, out.parent, candidates=candidates)
+                        publish_latest(out.parent)
+                    except (OSError, ValueError, KeyError) as exc:
+                        print(f'Prompt snapshot will retry: {exc}', flush=True)
+                    stop_export.wait(300)
+            reporter = threading.Thread(target=snapshots, daemon=True)
+            reporter.start()
         if status['reused_slots'] < 4 * len(tasks):
-            run_collector(out, indices, set(tasks), status, False, reused_protocol, screen_lanes=args.desktops_per_rank)
+            run_collector(out, indices, set(tasks), status, False, reused_protocol, screen_lanes=args.desktops_per_rank,
+                          check_initial_state=args.overnight)
             require_equivalent_protocol(read(out / 'episodes/protocol.json'), protocol)
         elif tasks:
             save(out / 'episodes/protocol.json', read(reused_protocol))
-        result = summarize(coverage(out, tasks, protocol))
+        result = summarize(coverage(out, tasks, protocol, overnight=args.overnight))
         save(out / 'coverage.json', result)
         status.update(status='shard_complete', scored=result['scored'], unscored=result['unscored'])
     except BaseException as exc:
+        stop_export.set()
         status.update(status='failed', error=repr(exc))
         raise
     finally:
         save(out / 'status.json', status)
     if rank == 0:
-        wait_for_shards(out.parent)
-        summary = merge(out.parent, batch, runtime)
+        try:
+            wait_for_shards(out.parent)
+            summary = merge(out.parent, batch, runtime)
+        finally:
+            stop_export.set()
+            if reporter is not None:
+                reporter.join()
+        if args.overnight:
+            export(out.parent, out.parent, final=summary['results'], candidates=candidates)
+            publish_latest(out.parent)
         print(f"Screened {summary['scored']}/{summary['trials']} slots, {summary['tasks_complete']}/{summary['tasks']} tasks have four scores. {out.parent / 'summary.json'}", flush=True)
         if not summary['scored']:
             raise RuntimeError('No screening trial returned a verified score')
