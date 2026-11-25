@@ -41,7 +41,8 @@ def main():
     checkout(source["url"], source["commit"], ROOT / source["path"])
     if args.local_patch:
         repo = ROOT / source["path"]
-        for name in ('local-bringup.patch', 'rl-integrity.patch', 'ais-distributed-training.patch'):
+        for name in ('local-bringup.patch', 'rl-integrity.patch', 'ais-distributed-training.patch',
+                     'ais-desktop-lifecycle.patch'):
             patch = ROOT / 'patches' / name
             reverse = subprocess.run(['git', '-C', str(repo), 'apply', '--reverse', '--check', str(patch)], capture_output=True)
             if reverse.returncode:

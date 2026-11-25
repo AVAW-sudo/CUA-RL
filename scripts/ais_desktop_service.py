@@ -76,6 +76,7 @@ def main():
     entry = config['osworld-pilot']
     entry['module'] = 'ais_osworld_worker.AisOSWorldTask'
     params = entry['parameters']
+    params['first_observation_timeout'] = 240 if args.rl_worker else 600
     if not args.rl_worker:
         params['concurrency'] = 1
     if args.concurrency is not None:
@@ -138,6 +139,8 @@ def main():
             save(run / 'status.json', status)
             controller = [str(binary), 'controller', '--host', args.host, '--port', str(ports[0]),
                           '--dashboard=false', '--long-timeout']
+            if args.rl_worker:
+                controller += ['--start-timeout', f"{params['first_observation_timeout'] + 30}s"]
             worker = [worker_python, *(['-S'] if worker_site else []), '-m', 'agentrl.worker', '-c', str(cfg), '--controller', api,
                       '--host', args.host, '--port', str(args.worker_port), '--self',
                       worker_url, 'osworld-pilot']

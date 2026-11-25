@@ -1,2 +1,4 @@
 # Unified-diff context lines intentionally contain a single space.
 patches/*.patch whitespace=-blank-at-eol,-blank-at-eof
+# Go context lines have the diff's leading space before gofmt indentation.
+patches/ais-desktop-lifecycle.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

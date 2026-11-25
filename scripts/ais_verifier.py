@@ -12,13 +12,22 @@ import requests
 _score = ContextVar('ais_verifier_requests', default=None)
 
 
-def install_scoring_observer():
+def install_scoring_observer(startup_budget=None):
     send = requests.Session.send
     if getattr(send, 'ais_scoring_observer', False):
         return
 
     @wraps(send)
     def observed(session, request, **kwargs):
+        if startup_budget is not None:
+            remaining = startup_budget()
+            if remaining is not None:
+                # Several upstream reset/setup calls leave Requests' timeout unset.
+                timeout = kwargs.get('timeout')
+                if isinstance(timeout, tuple):
+                    kwargs['timeout'] = tuple(remaining if t is None else min(t, remaining) for t in timeout)
+                elif timeout is None or isinstance(timeout, (int, float)):
+                    kwargs['timeout'] = remaining if timeout is None else min(timeout, remaining)
         scope = _score.get()
         if scope is None or not request.url.startswith(scope[0] + '/'):
             return send(session, request, **kwargs)

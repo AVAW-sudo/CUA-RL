@@ -169,9 +169,9 @@ class VM:
             raise RuntimeError(str(result.get('error', result))[-1200:])
         return result['output'].strip()
 
-    def screenshot(self, name):
+    def screenshot(self, name, timeout=8):
         from PIL import Image, ImageStat
-        with HTTP.open(f'http://{self.address}:{self.port}/screenshot', timeout=8) as response:
+        with HTTP.open(f'http://{self.address}:{self.port}/screenshot', timeout=timeout) as response:
             png = response.read()
         with Image.open(io.BytesIO(png)) as im:
             if im.format != 'PNG' or max(ImageStat.Stat(im.convert('RGB').resize((64, 36))).stddev) < 5:
@@ -180,13 +180,13 @@ class VM:
         (self.logs / name).write_bytes(png)
         return {'size': dimensions, 'png_bytes': len(png)}
 
-    def wait_desktop(self, timeout, name):
+    def wait_desktop(self, timeout, name, read_timeout=8):
         deadline = time.monotonic() + timeout
         next_log = time.monotonic() + 30
         while True:
             self.alive()
             try:
-                return self.screenshot(name)
+                return self.screenshot(name, timeout=read_timeout)
             except (OSError, ValueError, HTTPException) as exc:
                 if time.monotonic() >= deadline:
                     try:

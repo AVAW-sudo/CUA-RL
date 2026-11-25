@@ -180,6 +180,10 @@ def supervise(info, rank, local_dir, args):
                     CUA_ROLLOUT_IPC_DIR=str(local_dir))
     env.pop('PROMETHEUS_MULTIPROC_DIR', None)
     endpoint = env.get('CUA_CONTROLLER_URL')
+    if not endpoint:
+        desktops = int(env.get('CUA_RL_DESKTOPS_PER_RANK', '2'))
+        if not 1 <= desktops <= 32:
+            raise ValueError('CUA_RL_DESKTOPS_PER_RANK must be in 1..32')
     own_status = run / f'rank-{rank}.json'
     result = run / 'result.json'
     rank_states = [run / f'rank-{i}.json' for i in range(WORLD)]
@@ -239,7 +243,7 @@ def supervise(info, rank, local_dir, args):
                 if not endpoint:
                     controller = run / 'controller.json'
                     ready = local_dir / 'desktop.json'
-                    command = ['bash', str(ROOT / 'AIS_ENTRY.txt'), 'rl-desktop', '--concurrency', '4',
+                    command = ['bash', str(ROOT / 'AIS_ENTRY.txt'), 'rl-desktop', '--concurrency', str(desktops),
                                '--host', ip, '--advertise-host', ip, '--port', '0', '--worker-port', '0',
                                '--ready-file', str(ready)]
                     if rank:

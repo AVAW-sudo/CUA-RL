@@ -142,6 +142,14 @@ def prepare(root):
                 indices = json.load(response)
             if not isinstance(indices, list) or {str(i) for i in indices if i != -1} != expected:
                 errors.append(f'Controller does not serve the pilot task set: {controller}')
+            with urllib.request.urlopen(f'{controller}/list_workers', timeout=5) as response:
+                workers = json.load(response)[task]['workers'].values()
+                capacity = sum(w['capacity'] for w in workers if w['status'] == 'ALIVE' and not w['stale'])
+            if capacity < 1:
+                raise ValueError('No ready OSWorld desktop slots')
+            config['train']['concurrency'] = min(capacity, config['train']['concurrency'])
+            print(f"AIS OSWorld: {capacity} registered desktop slots, rollout concurrency "
+                  f"{config['train']['concurrency']}", flush=True)
         except (OSError, ValueError) as exc:
             errors.append(f'OSWorld controller {controller}: {exc}')
     if errors:

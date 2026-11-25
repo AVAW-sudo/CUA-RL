@@ -172,6 +172,7 @@ class DistributedJobTests(unittest.TestCase):
                         substitute = [sys.executable, '-c', 'pass']
                     elif 'rl-desktop' in command:
                         name = 'desktop'
+                        self.assertEqual(command[command.index('--concurrency') + 1], '2')
                         target = Path(command[command.index('--ready-file') + 1])
                         if target.parent.name != 'local-0':
                             self.assertEqual(command[command.index('--controller-url') + 1], controller)
