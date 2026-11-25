@@ -4,6 +4,8 @@
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt sft
 # Frontier 补评，8 个 rank，每个 rank 一张卡，从 23493157 继承已核验的试次
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt frontier
+# 数据筛选，单作业 8 个单卡 rank。每卡一个冻结的 SFT 服务、两个并发桌面。
+# bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen
 # RL 只提交一个作业。支持 8 个单卡 rank，或 1 个八卡实例。所有 rank 使用同一条 Entry。
 # 八个单卡 rank 各启动一个 Ray 节点，默认每个 worker 同时运行 2 个桌面，共 16 路。
 # 可在同一条命令前设置 CUA_RL_DESKTOPS_PER_RANK=4 做 32 路对照。每个 prompt 仍采样 8 次。
@@ -22,6 +24,9 @@ mode=${1:-check}
 if (( $# )); then shift; fi
 
 case "$mode" in
+    screen)
+        exec python3 -u "$project/scripts/ais_dataset_screen.py" "$@"
+        ;;
     sft)
         export CUA_SFT_DESKTOPS=2 CUA_SFT_BOOT_MODE=snapshot-gui
         exec "$entry" sft-audit --full --resume-job 23495234 "$@"
@@ -48,7 +53,7 @@ case "$mode" in
         exec "$entry" train-check "$@"
         ;;
     *)
-        echo 'Usage: bash AIS_ENTRY.txt [sft|frontier|rl-desktop|rl|check]' >&2
+        echo 'Usage: bash AIS_ENTRY.txt [sft|frontier|screen|rl-desktop|rl|check]' >&2
         exit 2
         ;;
 esac

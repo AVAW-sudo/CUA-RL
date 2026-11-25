@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from threading import Thread
+from threading import Lock, Thread
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,12 +15,15 @@ ROOT = Path(__file__).resolve().parents[1]
 class FrontierCollectorTest(unittest.TestCase):
     def test_ais_probe_and_shard_use_the_submitted_service(self):
         calls = Counter()
+        counter_lock = Lock()
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
                 payload = json.loads(body) if body else None
-                calls[self.path] += 1
+                with counter_lock:
+                    calls[self.path] += 1
+                    request_number = calls[self.path]
                 if self.path == '/start_sample':
                     self.server.test.assertEqual(payload['custom_task']['index'], 'test-task')
                     data = {'finish': False, 'messages': [{'role': 'user', 'content': 'test'}]}
@@ -29,6 +32,8 @@ class FrontierCollectorTest(unittest.TestCase):
                     data = {'choices': [{'message': {'role': 'assistant', 'content': 'done'}}]}
                 elif self.path == '/interact':
                     data = {'finish': True, 'status': 'completed', 'reward': 1}
+                    if request_number == 6:
+                        data = {'finish': True, 'status': 'task error'}
                 else:
                     self.server.test.assertEqual(self.path, '/cancel')
                     data = {}
@@ -71,6 +76,14 @@ class FrontierCollectorTest(unittest.TestCase):
                         self.assertEqual(calls['/chat/completions'], 5)
                         self.assertEqual(json.loads(rates.read_text()), {'osworld-pilot': {'test-task': 1.0}})
                 self.assertEqual(calls, {route: 5 for route in ('/start_sample', '/chat/completions', '/interact', '/cancel')})
+                folder = base / 'screen'
+                rates = base / 'screen-rates.json'
+                subprocess.run(cmd + ['--output', str(folder), '--rates-output', str(rates), '--screening',
+                                      '--concurrency', '2'], check=True, capture_output=True, text=True, timeout=40)
+                self.assertEqual(len(list(folder.glob('*/*/result.json'))), 3)
+                self.assertFalse(rates.exists())
+                attempts = [json.loads(p.read_text()) for p in folder.glob('*/*/attempt-01.json')]
+                self.assertEqual(sum(a['status'] == 'infrastructure_error' for a in attempts), 1)
             finally:
                 server.shutdown()
                 worker.join()

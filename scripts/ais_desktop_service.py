@@ -42,6 +42,7 @@ def main():
     parser.add_argument('--port', type=int, default=18520)
     parser.add_argument('--worker-port', type=int, default=18521)
     parser.add_argument('--controller-url', help='Register only a worker with this job controller')
+    parser.add_argument('--task-indices', type=Path, help='Serve this subset of the OSWorld research training split')
     parser.add_argument('--concurrency', type=int, choices=range(1, 33), metavar='1..32')
     parser.add_argument('--ready-file', type=Path, help='Publish the controller address after worker registration')
     args = parser.parse_args()
@@ -72,6 +73,16 @@ def main():
     run = Path(tempfile.mkdtemp(prefix='worker-', dir=parent))
     print(f'AIS desktop service: {run}', flush=True)
     expected = set(json.loads((ROOT / 'configs/original-pilot/train-indices.json').read_text()))
+    examples = ROOT / 'configs/original-pilot/train-examples.json'
+    if args.task_indices is not None:
+        selected = json.loads(args.task_indices.read_text())
+        catalogue = json.loads((ROOT / 'configs/research-splits/train-examples.json').read_text())
+        expected = set(selected)
+        groups = {app: [i for i in ids if i in expected] for app, ids in catalogue.items()}
+        if not expected or len(expected) != len(selected) or sum(map(len, groups.values())) != len(expected):
+            raise ValueError('Screening requires unique task IDs from the research training split')
+        examples = run / 'examples.json'
+        save(examples, groups)
     config = yaml.safe_load((ROOT / 'configs/osworld-pilot-worker.yaml').read_text())
     entry = config['osworld-pilot']
     entry['module'] = 'ais_osworld_worker.AisOSWorldTask'
@@ -114,12 +125,13 @@ def main():
                 status['image'] = str(base)
                 status['warm_restore'] = 'CUA_RL_VM_TEMPLATE' in env
             task_cache = os.getenv('CUA_TASK_CACHE')
-            fixture_manifest = ROOT.parent.parent / 'ENV/cache/ais-pilot-fixtures/manifest.json'
+            fixture_bundle = 'ais-sft-osworld-inputs' if args.task_indices else 'ais-pilot-fixtures'
+            fixture_manifest = ROOT.parent.parent / 'ENV/cache' / fixture_bundle / 'manifest.json'
             if not task_cache and fixture_manifest.is_file():
                 fixtures, status['setup_assets_cache'] = stage_runtime(fixture_manifest, 'fixtures')
                 task_cache = str(fixtures / 'tasks')
             params.update(images_dir=str(base.parent), ais_image=str(base), ais_audit=str(run / 'vms'),
-                          data_path=str(data / 'osworld/rl_tasks'), examples_path=str(ROOT / 'configs/original-pilot/train-examples.json'),
+                          data_path=str(data / 'osworld/rl_tasks'), examples_path=str(examples),
                           judge_functions_path=str(data / 'osworld/judge_functions/rl_tasks'),
                           cache_dir=task_cache or str(scratch / 'cache'), record_dir=str(run / 'records'))
             cfg = run / 'worker.yaml'
@@ -139,7 +151,7 @@ def main():
             save(run / 'status.json', status)
             controller = [str(binary), 'controller', '--host', args.host, '--port', str(ports[0]),
                           '--dashboard=false', '--long-timeout']
-            if args.rl_worker:
+            if args.rl_worker or args.task_indices:
                 controller += ['--start-timeout', f"{params['first_observation_timeout'] + 30}s"]
             worker = [worker_python, *(['-S'] if worker_site else []), '-m', 'agentrl.worker', '-c', str(cfg), '--controller', api,
                       '--host', args.host, '--port', str(args.worker_port), '--self',

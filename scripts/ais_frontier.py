@@ -47,7 +47,7 @@ def check_services(policy, desktop, out):
         raise RuntimeError(f'{message}. See {out / logs[-1]}')
 
 
-def run_collector(out, indices, expected, status, probe, reused_protocol):
+def run_collector(out, indices, expected, status, probe, reused_protocol, *, screen_lanes=None):
     base = ROOT.parent.parent
     binding = []
     with ExitStack() as sockets:
@@ -69,16 +69,22 @@ def run_collector(out, indices, expected, status, probe, reused_protocol):
             child = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             stack.callback(stop, child, 70)
             return child
-        policy = launch('policy', [sys.executable, '-u', str(ROOT / 'scripts/ais_frontier_server.py'),
-                        '--state-dir', str(service_dir), '--port', policy_port], os.environ)
+        policy_command = [sys.executable, '-u', str(ROOT / 'scripts/ais_frontier_server.py'),
+                          '--state-dir', str(service_dir), '--port', policy_port]
+        if screen_lanes:
+            policy_command.append('--local-weights')
+        policy = launch('policy', policy_command, os.environ)
         runtime, status['worker_cache'] = stage_worker(Path(os.getenv(
             'CUA_WORKER_MANIFEST', base / 'ENV/cache/ais-osworld-worker/manifest.json')))
         cpu_env = dict(os.environ, PYTHONPATH=str(runtime / 'site'))
         executable = sys.executable if sys.version_info[:2] == (3, 10) else str(base / 'ENV/conda_envs/test-gpu/bin/python')
         cpu = [os.getenv('CUA_WORKER_PYTHON', executable), '-S', '-u']
         cpu_env.setdefault('CUA_FRONTIER_WARM_GUEST', '1')
-        desktop = launch('desktop', cpu + [str(ROOT / 'scripts/ais_desktop_service.py'),
-                         '--port', controller_port, '--worker-port', worker_port], cpu_env)
+        desktop_command = cpu + [str(ROOT / 'scripts/ais_desktop_service.py'),
+                                 '--port', controller_port, '--worker-port', worker_port]
+        if screen_lanes is not None:
+            desktop_command += ['--task-indices', str(indices), '--concurrency', str(screen_lanes)]
+        desktop = launch('desktop', desktop_command, cpu_env)
         until = time.monotonic() + 3600
         while time.monotonic() < until:
             check_services(policy, desktop, out)
@@ -96,16 +102,27 @@ def run_collector(out, indices, expected, status, probe, reused_protocol):
         save(out / 'status.json', status)
         command = cpu + [str(ROOT / 'scripts/collect_frontier_rates.py'), '--task-name', 'osworld-pilot',
                          '--indices', str(indices), '--primary-service', str(service_state), '--service-pool', str(pool),
-                         '--controller', controller, '--private-worker', f'http://127.0.0.1:{worker_port}/api',
-                         '--output', str(out / 'episodes'), '--concurrency', '1',
+                         '--controller', controller, '--output', str(out / 'episodes'),
+                         '--concurrency', str(screen_lanes or 1),
                          '--rates-output', str(out / 'rates.json')]
+        if (screen_lanes or 1) == 1:
+            command += ['--private-worker', f'http://127.0.0.1:{worker_port}/api']
+        if screen_lanes:
+            command.append('--screening')
         if reused_protocol:
             command += ['--reused-protocol', str(reused_protocol)]
         if probe:
             command += ['--probe-one', TASK]
         collector = launch('collector', command, cpu_env)
+        next_report = 0
         while collector.poll() is None:
             check_services(policy, desktop, out)
+            if screen_lanes and time.monotonic() >= next_report:
+                scored = sum(1 for _ in (out / 'episodes').glob('*/*/result.json'))
+                status.update(scored=scored, trials=4 * len(expected))
+                save(out / 'status.json', status)
+                print(f"Screening rank {status['rank']} | {scored}/{status['trials']} terminal scores", flush=True)
+                next_report = time.monotonic() + 60
             time.sleep(3)
         if collector.returncode:
             raise RuntimeError(f'Collector exited with {collector.returncode}; see collector.log and episode attempts')

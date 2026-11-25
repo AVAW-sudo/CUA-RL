@@ -176,7 +176,8 @@ async def collect_all(args):
                             await rpc('/cancel', sid=sid)
                         except Exception:
                             pass
-                await asyncio.sleep(min(30 * number, 90))
+                if number < args.max_attempts:
+                    await asyncio.sleep(min(30 * number, 90))
 
         async def lane(slot):
             service = services[slot % len(services)]
@@ -192,7 +193,9 @@ async def collect_all(args):
         write_json(directory / 'probe.json', {'scope': 'single AIS integration probe',
                                                'result': json.loads(path.read_text())})
         return
-    write_shard_rates(directory, args.rates_output, protocol, indices, primary['served_model_name'])
+    # The dataset screener audits each slot and publishes partial coverage itself.
+    if not args.screening:
+        write_shard_rates(directory, args.rates_output, protocol, indices, primary['served_model_name'])
 
 
 if __name__ == '__main__':
@@ -200,6 +203,7 @@ if __name__ == '__main__':
     p.add_argument('--service-pool', type=Path, required=True)
     p.add_argument('--primary-service', type=Path, default=ROOT / 'runs/inference-service.json')
     p.add_argument('--probe-one', metavar='TASK', help='Collect only round one of this selected task')
+    p.add_argument('--screening', action='store_true', help='Leave per-slot evidence for the screening audit')
     p.add_argument('--indices', type=Path, default=ROOT / 'configs/rl-indices.json')
     p.add_argument('--task-name', default='osworld-rl')
     p.add_argument('--rates-output', type=Path, default=ROOT / 'configs/initial_pass_rate.osworld-rl.json')

@@ -70,6 +70,7 @@ def main():
     parser.add_argument('--port', type=int, default=18080)
     parser.add_argument('--probe-image', type=Path, help='Verify one real screenshot and stop')
     parser.add_argument('--state-dir', type=Path, help='Unique new directory for this service')
+    parser.add_argument('--local-weights', action='store_true', help='Stage digest-checked weights on node-local storage')
     parser.add_argument('--eval-checkpoint', choices=['osworld-sft', 'scienceboard-sft'],
                         help='Use the archived benchmark decoding settings for this SFT checkpoint')
     args = parser.parse_args()
@@ -139,7 +140,7 @@ def main():
         if site:
             env['PYTHONPATH'] = site
             cmd.insert(1, '-S')
-        if args.eval_checkpoint:
+        if args.eval_checkpoint or args.local_weights:
             from sft_local_weights import prepare_weights
             model_view = tempfile.TemporaryDirectory(prefix='sft-weights-')
             view = Path(model_view.name) / model.name
