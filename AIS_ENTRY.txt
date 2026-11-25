@@ -4,7 +4,7 @@
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt sft
 # Frontier 补评，8 个 rank，每个 rank 一张卡，从 23493157 继承已核验的试次
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt frontier
-# 数据筛选，单作业 8 个单卡 rank。每卡一个冻结的 SFT 服务、两个并发桌面。
+# 数据筛选，单作业连续筛 16 + 32 题，每题 4 次。8 个单卡 rank 各复用一个冻结的 SFT 服务和两个并发桌面。
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen
 # RL 只提交一个作业。支持 8 个单卡 rank，或 1 个八卡实例。所有 rank 使用同一条 Entry。
 # 八个单卡 rank 各启动一个 Ray 节点，默认每个 worker 同时运行 2 个桌面，共 16 路。

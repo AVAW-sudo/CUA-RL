@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class FrontierCollectorTest(unittest.TestCase):
     def test_ais_probe_and_shard_use_the_submitted_service(self):
         calls = Counter()
+        starts = []
         counter_lock = Lock()
 
         class Handler(BaseHTTPRequestHandler):
@@ -25,7 +26,9 @@ class FrontierCollectorTest(unittest.TestCase):
                     calls[self.path] += 1
                     request_number = calls[self.path]
                 if self.path == '/start_sample':
-                    self.server.test.assertEqual(payload['custom_task']['index'], 'test-task')
+                    task = payload['custom_task']['index']
+                    self.server.test.assertIn(task, {'test-task', 'next-task'})
+                    starts.append(task)
                     data = {'finish': False, 'messages': [{'role': 'user', 'content': 'test'}]}
                 elif self.path == '/chat/completions':
                     self.server.test.assertEqual(payload['model'], 'test-model')
@@ -84,6 +87,12 @@ class FrontierCollectorTest(unittest.TestCase):
                 self.assertFalse(rates.exists())
                 attempts = [json.loads(p.read_text()) for p in folder.glob('*/*/attempt-01.json')]
                 self.assertEqual(sum(a['status'] == 'infrastructure_error' for a in attempts), 1)
+                tasks.write_text(json.dumps(['test-task', 'next-task']))
+                folder = base / 'consecutive'
+                subprocess.run(cmd + ['--output', str(folder), '--screening'], check=True,
+                               capture_output=True, text=True, timeout=40)
+                self.assertEqual(starts[-8:], ['test-task'] * 4 + ['next-task'] * 4)
+                self.assertEqual(len(list(folder.glob('*/*/result.json'))), 8)
             finally:
                 server.shutdown()
                 worker.join()

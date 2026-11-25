@@ -3,13 +3,17 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from ais_dataset_screen import DEFAULT_BATCH, ROOT, checked_score, coverage, expected_protocol, merge, plan, restore, summarize
+from ais_dataset_screen import DEFAULT_BATCHES, ROOT, checked_score, coverage, expected_protocol, merge, plan, restore, summarize
 from ais_vm_check import save
 
 
 class DatasetScreenTest(unittest.TestCase):
     def test_batch_is_disjoint_and_train_only(self):
-        data = plan(DEFAULT_BATCH, 2)
+        data = plan(None, 2)
+        original = plan(DEFAULT_BATCHES[0], 2)
+        self.assertEqual(data['tasks'], 48)
+        for first, full in zip(original['shards'], data['shards']):
+            self.assertEqual(first, full[:len(first)])
         tasks = [i for shard in data['shards'] for i in shard]
         self.assertEqual(len(set(tasks)), data['tasks'])
         self.assertEqual((len(data['shards']), data['trials']), (8, len(tasks) * 4))
@@ -33,7 +37,7 @@ class DatasetScreenTest(unittest.TestCase):
             slot = old / 'episodes/fixture/1'
             slot.mkdir(parents=True)
             save(old / 'episodes/protocol.json', protocol)
-            save(old / 'cohort.json', {'batch': 'test'})
+            save(old / 'cohort.json', {'runtime': 'test', 'tasks': ['fixture'], 'batch_sha256': 'old'})
             row = {'task_index': 'fixture', 'result': 0, 'raw_reward': 0.4, 'run_number': 1,
                    'model': protocol['services'][0]['served_model_name'], 'model_revision': protocol['model_revision'],
                    'attempt': 1, 'terminal_status': 'completed'}
@@ -42,9 +46,16 @@ class DatasetScreenTest(unittest.TestCase):
                                                 terminal={'finish': True, 'status': 'completed', 'reward': 0.4}))
             (slot / 'trace-01.jsonl').write_text('{"turn":0,"message":{"role":"assistant"}}\n')
             new = out / 'resumed'
+            tasks = ['fixture', 'next']
+            extended = out / 'extended.json'
+            save(extended, tasks)
+            current = expected_protocol(extended)
+            cohort = {'runtime': 'test', 'tasks': tasks, 'batch_sha256': 'extended'}
             with self.assertRaises(ValueError):
-                restore(old, new, ['fixture'], protocol, {'batch': 'other'})
-            self.assertEqual(restore(old, new, ['fixture'], protocol, {'batch': 'test'}), 1)
+                restore(old, new, tasks, current, dict(cohort, runtime='other'))
+            with self.assertRaises(ValueError):
+                restore(old, new, tasks, dict(current, temperature=99), cohort)
+            self.assertEqual(restore(old, new, tasks, current, cohort), 1)
             result = summarize(coverage(new, ['fixture'], protocol))
             self.assertEqual(result['scored'], 1)
             self.assertEqual(result['unscored'], 3)
@@ -56,7 +67,7 @@ class DatasetScreenTest(unittest.TestCase):
     def test_merge_eight_shards_and_detect_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            batch = plan(DEFAULT_BATCH, 2)
+            batch = plan(None, 2)
             for rank, tasks in enumerate(batch['shards']):
                 lane = directory / f'rank-{rank}'
                 lane.mkdir()

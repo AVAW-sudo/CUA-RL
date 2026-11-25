@@ -62,11 +62,15 @@ async def collect_all(args):
                               'concurrency': args.concurrency, 'controller': args.controller,
                               'secondary_worker': json.loads(selection.read_text()) if selection.exists() else None}) + '\n')
     queue = asyncio.Queue()
-    for run in ([1] if args.probe_one else range(1, 5)):
-        for index in ([args.probe_one] if args.probe_one else indices):
-            path = directory / index / str(run)
-            if not (path / 'result.json').exists():
-                queue.put_nowait((index, run, path))
+    selected = [args.probe_one] if args.probe_one else indices
+    # Finish four trials on an initial group of tasks while the desktop and policy stay warm.
+    group_size = args.concurrency if args.screening else max(1, len(selected))
+    for start in range(0, len(selected), group_size):
+        for run in ([1] if args.probe_one else range(1, 5)):
+            for index in selected[start:start + group_size]:
+                path = directory / index / str(run)
+                if not (path / 'result.json').exists():
+                    queue.put_nowait((index, run, path))
 
     async with ClientSession(timeout=ClientTimeout(total=900)) as client:
         async def rpc(route, body=None, sid=None):

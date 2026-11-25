@@ -15,17 +15,25 @@ from ais_frontier_shards import read, require_equivalent_protocol, verify_attemp
 from ais_rank_status import read_rank_status
 from ais_vm_check import ROOT, save
 
-DEFAULT_BATCH = ROOT / 'configs/dataset-screen/batch-02.json'
+BATCH_DIR = ROOT / 'configs/dataset-screen'
+DEFAULT_BATCHES = (BATCH_DIR / 'batch-02.json', BATCH_DIR / 'batch-03.json')
 RUNS = ROOT / 'runs/ais-dataset-screen'
 
 
 def plan(indices, lanes):
-    tasks = read(indices)
+    manifests = DEFAULT_BATCHES if indices is None else (indices,)
+    tasks = []
+    for path in manifests:
+        items = read(path)
+        if not isinstance(items, list) or not items:
+            raise ValueError(f'Expected a nonempty task list in {path}')
+        tasks.extend(items)
     training = {i for domain in read(ROOT / 'configs/research-splits/train-examples.json').values() for i in domain}
     if (not isinstance(tasks, list) or not tasks or any(not isinstance(i, str) or i not in training for i in tasks)
             or len(tasks) != len(set(tasks))):
         raise ValueError('Select a nonempty list of unique research training variants')
-    return {'batch_sha256': hashlib.sha256(indices.read_bytes()).hexdigest(), 'tasks': len(tasks),
+    contents = manifests[0].read_bytes() if len(manifests) == 1 else json.dumps(tasks).encode()
+    return {'batch_sha256': hashlib.sha256(contents).hexdigest(), 'tasks': len(tasks),
             'trials': 4 * len(tasks), 'ranks': 8, 'desktops_per_rank': lanes,
             'shards': [tasks[rank::8] for rank in range(8)]}
 
@@ -77,16 +85,24 @@ def restore(source, out, tasks, protocol, cohort):
         if any((source / 'episodes').glob('*/*/attempt-*.json')):
             raise ValueError(f'Missing sampling protocol for existing attempts at {source}')
         return 0
-    if read(source / 'cohort.json') != cohort:
+    previous = read(source / 'cohort.json')
+    source_tasks = read(source / 'indices.json')
+    if (source_tasks != previous['tasks'] or tasks[:len(source_tasks)] != source_tasks or
+            {k: v for k, v in previous.items() if k not in ('tasks', 'batch_sha256')} !=
+            {k: v for k, v in cohort.items() if k not in ('tasks', 'batch_sha256')}):
         raise ValueError(f'Different task batch or runtime at {source}')
-    require_equivalent_protocol(read(source / 'episodes/protocol.json'), protocol)
+    previous_protocol = read(source / 'episodes/protocol.json')
+    require_equivalent_protocol(previous_protocol, expected_protocol(source / 'indices.json'))
+    # Only the roster grew. Check sampling and serving options independently of that roster.
+    require_equivalent_protocol(dict(previous_protocol, tasks=protocol['tasks'],
+                                     indices_sha256=protocol['indices_sha256']), protocol)
     kept = 0
-    for task in tasks:
+    for task in source_tasks:
         for trial in range(1, 5):
             old = source / 'episodes' / task / str(trial)
             if not (old / 'result.json').is_file():
                 continue
-            checked_score(old, task, trial, protocol)
+            checked_score(old, task, trial, previous_protocol)
             new = out / 'episodes' / task / str(trial)
             new.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(old, new)
@@ -121,7 +137,7 @@ def merge(directory, batch, runtime):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--indices', type=Path, default=DEFAULT_BATCH)
+    parser.add_argument('--indices', type=Path, help='Override the default consecutive screening batches')
     parser.add_argument('--plan', action='store_true', help='Print the eight shards without starting services')
     parser.add_argument('--reuse-from', metavar='JOB_ID', help='Reuse verified scored slots from this screening job')
     parser.add_argument('--desktops-per-rank', type=int, choices=range(1, 9), default=2)
@@ -162,7 +178,8 @@ def main():
             source = RUNS / args.reuse_from / out.name
             status['reused_slots'] = restore(source, out, tasks, protocol, cohort)
             if status['reused_slots']:
-                reused_protocol = source / 'episodes/protocol.json'
+                reused_protocol = out / 'reuse-protocol.json'
+                save(reused_protocol, protocol)
         if status['reused_slots'] < 4 * len(tasks):
             run_collector(out, indices, set(tasks), status, False, reused_protocol, screen_lanes=args.desktops_per_rank)
             require_equivalent_protocol(read(out / 'episodes/protocol.json'), protocol)
