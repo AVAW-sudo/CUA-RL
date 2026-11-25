@@ -17,6 +17,33 @@ from ais_rank_status import read_rank_status
 from ais_vm_check import ROOT, save
 
 WORLD = 8
+HEARTBEAT_INTERVAL = 5
+HEARTBEAT_TIMEOUT = 180
+
+
+class PeerHeartbeats:
+    """Measure time since this supervisor last observed a peer's counter advance."""
+    def __init__(self, paths):
+        self.peers = dict.fromkeys(paths, (None, time.monotonic()))
+
+    def poll(self):
+        for path, (previous, last_seen) in self.peers.items():
+            record = read_rank_status(path, poll=True)
+            now = time.monotonic()
+            if record is not None:
+                if record['stage'] == 'failed':
+                    raise RuntimeError(f"{path.stem}: {record['error']}")
+                if previous is None or record['heartbeat'] > previous['heartbeat']:
+                    self.peers[path] = (record, now)
+                    continue
+            elapsed = now - last_seen
+            if elapsed >= HEARTBEAT_TIMEOUT:
+                detail = (f"last heartbeat {previous['heartbeat']} during {previous['phase']}"
+                          if previous else 'no heartbeat observed')
+                raise RuntimeError(f'{path.stem} stopped reporting for {elapsed:.0f}s ({detail})')
+
+    def all_ready(self):
+        return all(record and record['stage'] == 'ready' for record, _ in self.peers.values())
 
 
 def free_ports(ip, count):
@@ -151,16 +178,21 @@ def supervise(info, rank, local_dir, args):
     own_status = run / f'rank-{rank}.json'
     result = run / 'result.json'
     rank_states = [run / f'rank-{i}.json' for i in range(WORLD)]
-    watch = rank_states if rank == 0 else rank_states[:1]
+    peers = PeerHeartbeats(rank_states[1:] if rank == 0 else rank_states[:1])
     phase = 'startup'
     healthy = {}
-    started = time.monotonic()
-    last_tick = 0.0
+    rank_status = {'stage': 'startup', 'heartbeat': 0}
+
+    def publish():
+        rank_status['heartbeat'] += 1
+        save(own_status, dict(rank_status, phase=phase))
 
     def wait_for(label, condition, timeout=None):
-        nonlocal phase, last_tick
+        nonlocal phase
         phase = label
         print(f'AIS rank {rank} waiting for {label}', flush=True)
+        publish()
+        next_tick = time.monotonic() + HEARTBEAT_INTERVAL
         deadline = time.monotonic() + timeout if timeout else None
         while True:
             value = condition()
@@ -172,23 +204,11 @@ def supervise(info, rank, local_dir, args):
             for name, child in healthy.items():
                 if child.poll() is not None:
                     raise RuntimeError(f'{name} exited with code {child.returncode}')
-            if now - last_tick >= 5:
-                os.utime(own_status)
-                for path in watch:
-                    record = read_rank_status(path, missing_ok=True)
-                    if record is None and now - started > 180:
-                        raise RuntimeError(f'{path.stem} has no status file')
-                    if record:
-                        if record['stage'] == 'failed':
-                            raise RuntimeError(f"{path.stem}: {record['error']}")
-                        if time.time() - path.stat().st_mtime > 180:
-                            raise RuntimeError(f'{path.stem} stopped reporting')
-                last_tick = now
+            if now >= next_tick:
+                publish()
+                peers.poll()
+                next_tick = now + HEARTBEAT_INTERVAL
             time.sleep(1)
-
-    def rank_is_ready(path):
-        record = read_rank_status(path, missing_ok=True)
-        return record and record['stage'] == 'ready'
 
     with ExitStack() as stack:
         def start(command, child_env, grace=25):
@@ -197,7 +217,7 @@ def supervise(info, rank, local_dir, args):
             return child
 
         try:
-            save(own_status, {'stage': phase})
+            publish()
             if rank:
                 wait_for('Ray head', (run / 'head.json').is_file, 300)
             tmp = '/tmp/cua-ray-' + run.name.rsplit('-', 1)[-1]
@@ -218,16 +238,16 @@ def supervise(info, rank, local_dir, args):
                                '--host', ip, '--advertise-host', ip, '--port', '0', '--worker-port', '0',
                                '--ready-file', str(ready)]
                     if rank:
-                        wait_for('desktop controller', controller.is_file, 1800)
-                        command += ['--controller-url', read_rank_status(controller)['url']]
+                        registered = wait_for('desktop controller', lambda: read_rank_status(controller, poll=True), 1800)
+                        command += ['--controller-url', registered['url']]
                     healthy['desktop'] = start(command, dict(env, CUDA_VISIBLE_DEVICES=''), 70)
-                    wait_for('desktop worker registration', ready.is_file, 1800)
-                    endpoint = read_rank_status(ready)['controller']
+                    desktop = wait_for('desktop worker registration', lambda: read_rank_status(ready, poll=True), 1800)
+                    endpoint = desktop['controller']
                     if rank == 0:
                         save(controller, {'url': endpoint})
-                save(own_status, {'stage': 'ready', 'controller': endpoint})
+                rank_status.update(stage='ready', controller=endpoint)
                 if rank == 0:
-                    wait_for('all desktop workers', lambda: all(map(rank_is_ready, rank_states)), 1900)
+                    wait_for('all desktop workers', peers.all_ready, 1900)
                     trainer = start([sys.executable, '-u', str(ROOT / 'scripts/launch_local_rl.py'),
                                      '--ais-pilot', *args], dict(env, CUA_CONTROLLER_URL=endpoint), 60)
                     wait_for('GRPO driver', lambda: trainer.poll() is not None)
@@ -244,13 +264,13 @@ def supervise(info, rank, local_dir, args):
             else:
                 wait_for('driver completion', finished.is_file)
                 save(run / f'finished-{rank}.json', {'rank': rank})
-                wait_for('final job status', result.is_file, 240)
-                outcome = read_rank_status(result)
+                outcome = wait_for('final job status', lambda: read_rank_status(result, poll=True), 240)
                 if not outcome['passed']:
                     raise RuntimeError(outcome['error'])
         except BaseException as exc:
             message = f'{phase}: {type(exc).__name__}: {exc}'
-            save(own_status, {'stage': 'failed', 'error': message})
+            rank_status.update(stage='failed', error=message)
+            publish()
             if rank == 0 and not result.exists():
                 save(result, {'passed': False, 'error': message})
             raise

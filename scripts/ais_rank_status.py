@@ -5,8 +5,8 @@ import sys
 import time
 
 
-def read_rank_status(path, *, missing_ok=False):
-    """A replaced status on the shared mount can briefly appear empty or unreadable."""
+def read_rank_status(path, *, missing_ok=False, poll=False):
+    """With poll=True, let the caller retry transient or incomplete reads on its own clock."""
     delays = iter((1, 2, 4, 8, 15, 30, 30, 30))
     while True:
         try:
@@ -16,7 +16,7 @@ def read_rank_status(path, *, missing_ok=False):
             return record
         except json.JSONDecodeError as exc:
             error = json.JSONDecodeError(f'{path}: {exc.msg}', exc.doc, exc.pos)
-            if exc.doc.strip():
+            if exc.doc.strip() and not poll:
                 raise error from exc
         except OSError as exc:
             if missing_ok and exc.errno == errno.ENOENT:
@@ -24,6 +24,8 @@ def read_rank_status(path, *, missing_ok=False):
             if exc.errno not in (errno.EACCES, errno.ESTALE, errno.ENOENT):
                 raise
             error = exc
+        if poll:
+            return None
         delay = next(delays, None)
         if delay is None:
             raise error

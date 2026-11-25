@@ -3,6 +3,7 @@ import ast
 import asyncio
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+import errno
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,73 @@ def upstream_method(file, cls, name, namespace):
 
 
 class DistributedJobTests(unittest.TestCase):
+    def test_heartbeat_uses_local_elapsed_time_and_ignores_replayed_or_unreadable_records(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(job.time, 'monotonic') as clock, \
+                patch.object(job.time, 'sleep', side_effect=AssertionError('poll blocked')):
+            path = Path(directory) / 'rank-0.json'
+            clock.return_value = 0
+            peers = job.PeerHeartbeats([path])
+            peers.poll()  # Head has not published yet.
+            for seq, timestamp in [(1, 10), (2, 160), (3, 310)]:
+                clock.return_value = timestamp
+                job.save(path, {'stage': 'ready', 'phase': 'GRPO driver', 'heartbeat': seq})
+                os.utime(path, (1, 1))
+                peers.poll()
+            self.assertTrue(peers.all_ready())
+            clock.return_value = 485
+            job.save(path, {'stage': 'startup', 'phase': 'Ray head', 'heartbeat': 2})
+            peers.poll()
+            self.assertTrue(peers.all_ready())
+            path.write_text('{"stage":')
+            peers.poll()
+            with patch.object(Path, 'read_text', side_effect=OSError(errno.ESTALE, 'stale')):
+                peers.poll()
+            clock.return_value = 490
+            with self.assertRaisesRegex(RuntimeError, 'rank-0 stopped reporting for 180s.*last heartbeat 3 during GRPO driver'):
+                peers.poll()
+
+    def test_startup_timeout_and_explicit_peer_failure(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(job.time, 'monotonic') as clock:
+            path = Path(directory) / 'rank-7.json'
+            clock.return_value = 0
+            peers = job.PeerHeartbeats([path])
+            clock.return_value = job.HEARTBEAT_TIMEOUT
+            with self.assertRaisesRegex(RuntimeError, 'rank-7.*no heartbeat observed'):
+                peers.poll()
+            job.save(path, {'stage': 'failed', 'error': 'desktop exited'})
+            with self.assertRaisesRegex(RuntimeError, 'rank-7: desktop exited'):
+                peers.poll()
+
+    def test_worker_detects_frozen_head_during_desktop_registration_and_reaps_children(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            local = root / 'local'
+            local.mkdir()
+            head = root / 'rank-0.json'
+            job.save(head, {'stage': 'ready', 'phase': 'all desktop workers', 'heartbeat': 12})
+            os.utime(head, (4_000_000_000, 4_000_000_000))
+            job.save(root / 'head.json', {})
+            job.save(root / 'placement.json', {})
+            job.save(root / 'controller.json', {'url': 'http://127.0.0.1:18520/api'})
+            states = [{'rank': i, 'runtime': {'ip': '127.0.0.1'}} for i in range(8)]
+            info = dict(run=directory, address='127.0.0.1:12345', participants=states)
+            popen = subprocess.Popen
+            children = []
+
+            def spawn(command, **kwargs):
+                child = popen(['sleep', '100'], **kwargs)
+                children.append(child)
+                return child
+
+            with patch.dict(os.environ, CUA_CONTROLLER_URL=''), patch.object(job, 'HEARTBEAT_INTERVAL', 0.1), \
+                    patch.object(job, 'HEARTBEAT_TIMEOUT', 1), patch.object(job.subprocess, 'Popen', side_effect=spawn):
+                with self.assertRaisesRegex(RuntimeError, 'rank-0 stopped reporting.*last heartbeat 12'):
+                    job.supervise(info, 1, local, [])
+            failure = job.read_rank_status(root / 'rank-1.json')
+            self.assertEqual((failure['stage'], failure['phase']), ('failed', 'desktop worker registration'))
+            self.assertEqual(len(children), 2)
+            self.assertTrue(all(child.poll() is not None for child in children))
+
     def test_dispatch_preserves_single_entry(self):
         env = dict(os.environ, CUA_TRAIN_PYTHON='echo', CUA_CONTROLLER_URL='http://example.invalid/api')
         script = str(job.ROOT / 'scripts/ais_entry.sh')
@@ -102,16 +170,28 @@ class DistributedJobTests(unittest.TestCase):
                         job.save(root / 'head.json', {})
                         job.save(root / 'placement.json', {})
                         substitute = [sys.executable, '-c', 'pass']
+                    elif 'rl-desktop' in command:
+                        name = 'desktop'
+                        target = Path(command[command.index('--ready-file') + 1])
+                        if target.parent.name != 'local-0':
+                            self.assertEqual(command[command.index('--controller-url') + 1], controller)
+                        job.save(target, {'controller': controller})
+                        substitute = ['sleep', '100']
                     else:
                         self.assertIn('--ais-pilot', command)
                         name = 'driver'
+                        self.assertEqual(kwargs['env']['CUA_CONTROLLER_URL'], controller)
+                        for path in root.glob('rank-*.json'):
+                            self.assertEqual(job.read_rank_status(path)['stage'], 'ready')
                         substitute = [sys.executable, '-c', f'raise SystemExit({driver_code})']
                     process = popen(substitute, **kwargs)
                     with lock:
                         launched.append((name, process))
                     return process
 
-                with patch.dict(os.environ, CUA_CONTROLLER_URL='http://127.0.0.1:18520/api'), \
+                controller = 'http://127.0.0.1:18520/api'
+                with patch.dict(os.environ, CUA_CONTROLLER_URL=controller if driver_code else ''), \
+                        patch.object(job, 'HEARTBEAT_INTERVAL', 0.25), \
                         patch.object(job.subprocess, 'Popen', side_effect=spawn), ThreadPoolExecutor(8) as pool:
                     futures = []
                     for rank in range(8):
@@ -122,6 +202,7 @@ class DistributedJobTests(unittest.TestCase):
                 self.assertEqual([bool(e) for e in errors], [bool(driver_code)] * 8)
                 names = [name for name, _ in launched]
                 self.assertEqual(names.count('driver'), int(not args))
+                self.assertEqual(names.count('desktop'), 8 if not args and not driver_code else 0)
                 self.assertEqual(names.count('verify'), 1)
                 self.assertTrue(all(c.poll() is not None for _, c in launched))
                 self.assertEqual(json.loads((root / 'result.json').read_text())['passed'], not driver_code)
