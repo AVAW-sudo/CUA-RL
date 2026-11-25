@@ -1,0 +1,738 @@
+{
+  "upstream_commit": "21b5eb0f1d00898f7de9e84c3d33a87c2f2b3c3e",
+  "source": "https://github.com/OS-Copilot/ScienceBoard",
+  "tasks": {
+    "ChimeraX_A-02": {
+      "config_sha256": "8d95451ae1e331a90cdb5f5393b31bd63f12aeb21618c4a6b18fbc8653610f7f",
+      "steps": {
+        "5": {
+          "url": "https://files.rcsb.org/download/3ppd.cif",
+          "path": "/home/user/Downloads/prot.cif",
+          "op": "download"
+        }
+      }
+    },
+    "ChimeraX_D-01": {
+      "config_sha256": "08ee0787c0d9cc98745b7771080923b462d0cc1b05c58ead18b71e01ddffddcf",
+      "steps": {
+        "6": {
+          "name": "A8Z1J3",
+          "op": "alphafold_match"
+        },
+        "8": {
+          "style": "bypolymer",
+          "op": "color"
+        }
+      }
+    },
+    "ChimeraX_D-02": {
+      "config_sha256": "dcbc560b342eb5c03700f087714aa52a20d266f39f9711b7e1d0e62f6a958978",
+      "steps": {
+        "6": {
+          "name": "A8Z1J3",
+          "op": "alphafold_match"
+        },
+        "8": {
+          "style": "bypolymer",
+          "op": "color"
+        }
+      }
+    },
+    "GrassGIS_A-02": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "natural_earth"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_A-03": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_A-04": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_A-05": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_A-06": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_A-07": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_A-08": {
+      "config_sha256": "04e9d301ce22f89ea96b8f2911132ff0e5ecc7255d1934d47d1d7ce7df1efb11",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        },
+        "5": {
+          "scale": 25,
+          "op": "scale"
+        }
+      }
+    },
+    "GrassGIS_A-09": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_A-10": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-01": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-02": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-03": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-04": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-05": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-06": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-07": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-08": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-09": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-10": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-11": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-12": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_B-13": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_C-01": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_C-02": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_C-03": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_C-04": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_C-05": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_C-06": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_C-07": {
+      "config_sha256": "3619e8cc2989bb60e136c4af4e866ebf7bc172e96ed4d57501d974ec257a1bcd",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        }
+      }
+    },
+    "GrassGIS_D-01": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_D-02": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_D-03": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "grassdata_piemonte_utm32n_wgs84_grass7",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "boundary_region"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "GrassGIS_D-04": {
+      "config_sha256": "3d863a4f784d53b6f1dd5bf4f6cb39e0fc4a22bbc8174efe801bc2f1f565b8e9",
+      "steps": {
+        "3": {
+          "grassdb": "/home/user/grassdata",
+          "location": "natural_earth_dataset",
+          "mapset": "PERMANENT",
+          "op": "map"
+        },
+        "4": {
+          "wait": 5,
+          "query": {
+            "name": "countries"
+          },
+          "op": "layer"
+        }
+      }
+    },
+    "Lean_A-03": {
+      "config_sha256": "890883b6bc70a6b8d3c19f3fa1454104716a31edef35f12cd98f45b07b59ce82",
+      "steps": {
+        "1": {
+          "libs": [
+            "ZFSet"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_A-04": {
+      "config_sha256": "9cf93d0de53a448e74002a73d5a76c291762ab17c043c1205e914d446af51ef9",
+      "steps": {
+        "1": {
+          "libs": [
+            "Ordinal",
+            "Cardinal"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_A-05": {
+      "config_sha256": "b403bd2aa803624c08ac57faa03c8f4578589d6056508138d92863a5bcddac46",
+      "steps": {
+        "1": {
+          "libs": [
+            "Ordinal",
+            "Cardinal"
+          ],
+          "op": "open"
+        },
+        "2": {
+          "expr": "def ℷ (κ : Cardinal) : Cardinal := κ ^ cof κ.ord",
+          "op": "def"
+        }
+      }
+    },
+    "Lean_B-03": {
+      "config_sha256": "6b651180bdee5940eabb1fcd30ce1dfafc267c750449b171304b7ea9b021e005",
+      "steps": {
+        "1": {
+          "libs": [
+            "CategoryTheory",
+            "FirstOrder"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_C-01": {
+      "config_sha256": "72c74905ed16b9af6a15376ea204fabb1a475797aa6705e2c6c9cfa6455c5b73",
+      "steps": {
+        "1": {
+          "libs": [
+            "TopologicalSpace"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_D-01": {
+      "config_sha256": "b93493e655e7c56a127a0f852507cce17a81ab593fff9ad4919a21f993e8d7b3",
+      "steps": {
+        "1": {
+          "libs": [
+            "Filter",
+            "Topology"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_D-03": {
+      "config_sha256": "7cefb116eda2f42a18704b11a42c7582c3ccb4eac04073628ed2724d5f043093",
+      "steps": {
+        "1": {
+          "libs": [
+            "Set"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_D-04": {
+      "config_sha256": "543e735fb794bc76aa2e6ae54b60afeae6ad933a3770b117b2c29d91343ee1fd",
+      "steps": {
+        "1": {
+          "libs": [
+            "Cardinal",
+            "MeasureTheory"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_D-05": {
+      "config_sha256": "0e6ac34846fb752e13f2edddd11c56c7d55bf809e6b792749fe791907b90b839",
+      "steps": {
+        "1": {
+          "libs": [
+            "MeasureTheory",
+            "ENNReal",
+            "Filter",
+            "Topology"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_D-06": {
+      "config_sha256": "6acd4b24062b3369187722f244ba0a319df99289c0f0574a17e1641fe565341c",
+      "steps": {
+        "1": {
+          "libs": [
+            "Set",
+            "MeasureTheory",
+            "Filter"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_D-07": {
+      "config_sha256": "4b01a5f90ae9b84ebc97366d290be08513de31322f20c6ff73ffd1ee37703a1b",
+      "steps": {
+        "1": {
+          "libs": [
+            "MeasureTheory",
+            "ProbabilityTheory",
+            "Filter",
+            "Topology"
+          ],
+          "op": "open"
+        }
+      }
+    },
+    "Lean_E-02": {
+      "config_sha256": "176d7f6a400ed3f1fcfaf1dcb1d4954166bdd98c41a3080a820b9d406d964204",
+      "steps": {
+        "1": {
+          "libs": [
+            "Cardinal"
+          ],
+          "op": "open"
+        },
+        "2": {
+          "expr": "def ideal (I : Set (Set α)) : Prop := ∃ F : Filter α, I = {i : Set α | ∃ f ∈ F.sets, i = fᶜ }",
+          "op": "def"
+        },
+        "3": {
+          "expr": "def inter_family (A : Set (Set α)) : Prop := ∀ X ∈ A, ∀ Y ∈ A, (X ∩ Y) ≠ ∅",
+          "op": "def"
+        },
+        "4": {
+          "expr": "def star (A : Set (Set α)) : Prop := (⋂ X ∈ A, X) ≠ ∅",
+          "op": "def"
+        }
+      }
+    }
+  }
+}

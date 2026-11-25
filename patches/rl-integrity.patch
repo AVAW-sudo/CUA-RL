@@ -1,0 +1,83 @@
+diff --git a/scalecua_rl/trainer/src/agentrl/trainer/agentic/loops.py b/scalecua_rl/trainer/src/agentrl/trainer/agentic/loops.py
+index a95df70..94671fb 100644
+--- a/scalecua_rl/trainer/src/agentrl/trainer/agentic/loops.py
++++ b/scalecua_rl/trainer/src/agentrl/trainer/agentic/loops.py
+@@ -1118,6 +1118,16 @@ async def openai_chat_agent_loop_custom(
+         if ENABLE_TASK_LOGGING:
+             t_env_start = time.time()
+         obs = await obs_fn(message, sid)
++        if os.getenv("CUA_STRICT_OSWORLD_REWARDS") == "1" and obs.get("finish"):
++            status = obs.get("status")
++            valid = status in {"completed", "agent context limit", "agent validation failed",
++                               "agent invalid action", "task limit reached"}
++            reward = obs.get("reward")
++            if not valid or (status == "completed" and
++                             (type(reward) not in (int, float) or not 0 <= reward <= 1)):
++                print(f"Discarding unscored rollout: {sid=} {task_index=} {status=} {reward=}", flush=True)
++                await end_fn(sid, True)
++                return None
+         if ENABLE_TASK_LOGGING:
+             t_env_end = time.time()
+             task_log(task_index, log_dir, log_file, f"task {task_index} turn {turn} env time: {t_env_end - t_env_start:.4f}s")
+diff --git a/scalecua_rl/trainer/src/agentrl/trainer/checkpoint/megatron_swift_checkpoint_manager.py b/scalecua_rl/trainer/src/agentrl/trainer/checkpoint/megatron_swift_checkpoint_manager.py
+index 4038db8..253b3b2 100644
+--- a/scalecua_rl/trainer/src/agentrl/trainer/checkpoint/megatron_swift_checkpoint_manager.py
++++ b/scalecua_rl/trainer/src/agentrl/trainer/checkpoint/megatron_swift_checkpoint_manager.py
+@@ -54,7 +54,8 @@ class MegatronSwiftCheckpointManager(BaseCheckpointManager):
+         self.previous_global_step = global_step
+         if max_ckpt_to_keep and isinstance(max_ckpt_to_keep, int) and max_ckpt_to_keep > 0 and len(self.previous_saved_paths) >= max_ckpt_to_keep:
+             keep_start = len(self.previous_saved_paths) - max_ckpt_to_keep + 1
+-            self.remove_previous_save_local_path(self.previous_saved_paths[:keep_start])
++            if self.rank == 0:
++                self.remove_previous_save_local_path(self.previous_saved_paths[:keep_start])
+             self.previous_saved_paths = self.previous_saved_paths[keep_start:]
+ 
+         local_path = self.local_mkdir(local_path)
+@@ -66,13 +67,16 @@ class MegatronSwiftCheckpointManager(BaseCheckpointManager):
+                 state_dict = model.state_dict()
+                 state_dicts.append(state_dict)
+ 
+-            print(f"Saving sharded model checkpoint to {local_path}")
+             model_ckpt_path = get_model_checkpoint_path(local_path)
+             hf_config_and_tokenizer_path = get_hf_config_and_tokenizer_checkpoint_path(local_path)
+             ckpt_name = self.get_checkpoint_name(model_ckpt_path, return_base_dir=False)
+-            torch.save(state_dicts, os.path.join(ckpt_name))
+-
+-            print(f"Saved checkpoint to {model_ckpt_path}")
++            # The filename includes TP, PP and EP but is shared by DP/CP replicas.
++            # Select exactly one writer per actual shard, including for MoE layouts.
++            shard_paths = [None] * torch.distributed.get_world_size()
++            torch.distributed.all_gather_object(shard_paths, ckpt_name)
++            if self.rank == shard_paths.index(ckpt_name):
++                torch.save(state_dicts, ckpt_name)
++                print(f"Saved model shard to {ckpt_name}")
+             if self.rank == 0:
+                 self.processing_class.save_pretrained(hf_config_and_tokenizer_path)
+                 self.hf_config.save_pretrained(hf_config_and_tokenizer_path)
+diff --git a/scalecua_rl/trainer/src/agentrl/trainer/components/buffer.py b/scalecua_rl/trainer/src/agentrl/trainer/components/buffer.py
+index c953086..f41c9dc 100644
+--- a/scalecua_rl/trainer/src/agentrl/trainer/components/buffer.py
++++ b/scalecua_rl/trainer/src/agentrl/trainer/components/buffer.py
+@@ -1,5 +1,6 @@
+ import asyncio
+ import math
++import os
+ from collections import deque
+ from math import lcm
+ 
+@@ -24,7 +25,14 @@ class Buffer:
+                 self.groups[group_id] = []
+             self.groups[group_id].append(item["results"])
+             if len(self.groups[group_id]) >= self.group_size:
+-                self.queue.extend(self.groups[group_id])
++                group = self.groups[group_id]
++                if os.getenv("CUA_STRICT_OSWORLD_REWARDS") == "1" and any(r is None for r in group):
++                    print(f"Discarding incomplete rollout group {group_id}: "
++                          f"{sum(r is None for r in group)}/{self.group_size} missing", flush=True)
++                    # Preserve queue accounting; the trainer filters these placeholders
++                    # before updating the actor or the dynamic sampler.
++                    group = [None] * len(group)
++                self.queue.extend(group)
+                 self.put_signal.set()
+                 del self.groups[group_id]
+         else:

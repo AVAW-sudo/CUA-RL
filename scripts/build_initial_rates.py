@@ -12,6 +12,8 @@ import math
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+TERMINAL_AGENT_STATES = {'completed', 'agent context limit', 'agent validation failed',
+                         'agent invalid action', 'task limit reached'}
 
 
 def collect(rows, indices, model):

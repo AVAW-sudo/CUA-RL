@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# 在 AIS 的独立作业中，各复制对应的一行命令（从 bash 开始）。
+# SFT 续评，8 个 rank，每个 rank 一张卡
+# bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt sft
+# Frontier 补评，8 个 rank，每个 rank 一张卡，从 23493157 继承已核验的试次
+# bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt frontier
+# RL 只提交一个作业。支持 8 个单卡 rank，或 1 个八卡实例。所有 rank 使用同一条 Entry。
+# 八个单卡 rank 各启动一个 Ray 节点和一个四路桌面 worker，rank 0 在 64 道题注册后启动训练。
+# bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt rl
+# 将 RL 设为 Frontier 成功后的下游作业。RL 默认使用此次补评核验的成功率。
+# 默认留空 CUA_CONTROLLER_URL。只有复用已有的专用服务时才填写外部地址。
+# 可用 CUA_FRONTIER_RATES 指定其他成功率文件。
+# 八个单卡 rank 可用 rl --check-only 单独验证 NCCL、八个 Ray GPU 和 2+6 放置。正式 rl 会自动执行此检查。
+# check 验证训练环境和通信，check --eight-gpus 用于单实例八卡。
+set -eu
+project=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+entry="$project/scripts/ais_entry.sh"
+frontier_source=23493157
+frontier_rates="$project/runs/ais-frontier-campaigns/repair-$frontier_source-rates.json"
+mode=${1:-check}
+if (( $# )); then shift; fi
+
+case "$mode" in
+    sft)
+        export CUA_SFT_DESKTOPS=2 CUA_SFT_BOOT_MODE=snapshot-gui
+        exec "$entry" sft-audit --full --resume-job 23495234 "$@"
+        ;;
+    frontier)
+        if [[ "${1:-}" == --plan ]]; then
+            shift
+            exec "$entry" frontier --plan-reuse "$frontier_source" "$@"
+        fi
+        exec "$entry" frontier --reuse-from "$frontier_source" --publish-rates "$frontier_rates" "$@"
+        ;;
+    rl-desktop)
+        worker_python="${CUA_WORKER_PYTHON:-$project/../../ENV/conda_envs/test-gpu/bin/python}"
+        export CUA_FRONTIER_WARM_GUEST="${CUA_FRONTIER_WARM_GUEST:-1}"
+        exec "$worker_python" -u "$project/scripts/ais_desktop_service.py" --rl-worker "$@"
+        ;;
+    rl|check)
+        export CUA_TRAIN_PYTHON="$project/../../ENV/cua-rl-ais-cu129/bin/ais-python"
+        if [[ "$mode" == rl ]]; then
+            export CUA_FRONTIER_RATES="${CUA_FRONTIER_RATES:-$frontier_rates}"
+            exec "$entry" train "$@"
+        fi
+        if (( $# == 0 )); then set -- --all-ranks; fi
+        exec "$entry" train-check "$@"
+        ;;
+    *)
+        echo 'Usage: bash AIS_ENTRY.txt [sft|frontier|rl-desktop|rl|check]' >&2
+        exit 2
+        ;;
+esac

@@ -1,0 +1,22 @@
+{
+  "osworld": [
+    "chrome/e1e75309-3ddb-4d09-92ec-de869c928143",
+    "chrome/b4f95342-463e-4179-8c3f-193cd7241fb2",
+    "multi_apps/02ce9a50-7af2-47ed-8596-af0c230501f8",
+    "vs_code/e2b5e914-ffe1-44d2-8e92-58f8c5d92bb2",
+    "chrome/f0b971a1-6831-4b9b-a50e-22a6e47f45ba",
+    "chrome/bb5e4c0d-f964-439c-97b6-bdb9747de3f4",
+    "libreoffice_writer/0b17a146-2934-46c7-8727-73ff6b6483e8",
+    "os/94d95f96-9699-4208-98ba-3c3119edf9c2"
+  ],
+  "scienceboard": [
+    "GrassGIS/GrassGIS_B-01",
+    "GrassGIS/GrassGIS_B-13",
+    "Lean/Lean_E-02",
+    "ChimeraX/ChimeraX_A-02",
+    "Celestia/Celestia_C-01",
+    "KAlgebra/KAlgebra_A-01",
+    "KAlgebra/KAlgebra_C-06",
+    "TeXstudio/TeXstudio_A-01"
+  ]
+}

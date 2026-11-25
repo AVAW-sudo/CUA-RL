@@ -1,0 +1,20 @@
+{
+  "osworld-sft": {
+    "revision": "406fe37598dc77b452bee1904c43411fbb6c5fad",
+    "sha256": {
+      "model-00001-of-00004.safetensors": "c60855a7001fafd84c7f17e41d09d16910b69b525c0619e3fd961fe077ae939b",
+      "model-00002-of-00004.safetensors": "f3b621d8b41bd147ac4c51076322fca5af4018316c69d8aa6d0e392aebf6b95c",
+      "model-00003-of-00004.safetensors": "351dd02c17213fd585b3d7b9a9e57eff1b5701cf79b154b32d59438678ffd8f6",
+      "model-00004-of-00004.safetensors": "0c0e58faf28e60436dc4a43463698fb4f6b581ef0011da3ab5b46c7edf917298"
+    }
+  },
+  "scienceboard-sft": {
+    "revision": "48c39bb30e1920e02c440fc256f5bb4e1d44765b",
+    "sha256": {
+      "model-00001-of-00004.safetensors": "777fb7ee81f77e80e36afa7d46217b9cdcb4c1e0a0c48898f4b554ae7ac6b173",
+      "model-00002-of-00004.safetensors": "7066bbb6d5e0f81e905eb91636ace92cbc58e3f7de80e34165cec1781413e939",
+      "model-00003-of-00004.safetensors": "e4c9615b79a53d751b0627658e269a4534210c92b06f339df67d825e72213f80",
+      "model-00004-of-00004.safetensors": "b2ecd9a510abd69a177fa2643f348044bace942331222e4439442156c5ceec72"
+    }
+  }
+}

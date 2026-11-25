@@ -9,22 +9,35 @@ import math
 import time
 from pathlib import Path
 
-from aiohttp import ClientError, ClientSession, ClientTimeout
-from build_initial_rates import collect
+from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
+from ais_frontier_shards import write_shard_rates
+from build_initial_rates import TERMINAL_AGENT_STATES
 from inference_pool import load_services
 from run_benchmark import ROOT, write_json
 
-TERMINAL_AGENT_STATES = {'completed', 'agent context limit', 'agent validation failed',
-                         'agent invalid action', 'task limit reached'}
+
+async def release_failed_start(client, worker, exc):
+    # The controller forgets a session after a /start_sample error. Its response
+    # still identifies the exact session the private worker may be initializing.
+    sid = (exc.headers or {}).get('session_id', '')
+    if not sid.isdigit():
+        return None
+    async with client.post(worker + '/cancel', json={'session_id': int(sid)}, timeout=240) as response:
+        if response.status == 400 and 'No such session' in await response.text():
+            return {'session_id': sid, 'status': 'already_released'}
+        response.raise_for_status()
+        return {'session_id': sid, 'status': 'released'}
 
 
 async def collect_all(args):
     spec = importlib.util.spec_from_file_location('original_server_agent', ROOT / 'SCALE-CUA/scalecua_rl/scripts/server_agent.py')
     upstream = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(upstream)
-    primary = json.loads((ROOT / 'runs/inference-service.json').read_text())
+    primary = json.loads(args.primary_service.read_text())
     services = load_services(args.service_pool, primary)
     indices = json.loads(args.indices.read_text())
+    if args.probe_one is not None and args.probe_one not in indices:
+        raise ValueError(f'Probe task is outside the selected indices: {args.probe_one}')
     directory = args.output.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     protocol = {'model_revision': primary['model_revision'], 'tasks': len(indices), 'task_name': args.task_name, 'runs_per_task': 4,
@@ -36,6 +49,9 @@ async def collect_all(args):
                 'top_p': 1.0, 'top_k': -1,
                 'services': [{k: s.get(k) for k in ['model_revision', 'model_dir', 'served_model_name',
                                                   'base_url', 'command', 'runtime_compatibility']} for s in services]}
+    if args.reused_protocol:
+        from ais_frontier_shards import require_equivalent_protocol
+        require_equivalent_protocol(json.loads(args.reused_protocol.read_text()), protocol)
     protocol_path = directory / 'protocol.json'
     if protocol_path.exists() and json.loads(protocol_path.read_text()) != protocol:
         raise ValueError('Frontier pre-run protocol changed; preserve this run and use a new directory')
@@ -46,8 +62,8 @@ async def collect_all(args):
                               'concurrency': args.concurrency, 'controller': args.controller,
                               'secondary_worker': json.loads(selection.read_text()) if selection.exists() else None}) + '\n')
     queue = asyncio.Queue()
-    for run in range(1, 5):
-        for index in indices:
+    for run in ([1] if args.probe_one else range(1, 5)):
+        for index in ([args.probe_one] if args.probe_one else indices):
             path = directory / index / str(run)
             if not (path / 'result.json').exists():
                 queue.put_nowait((index, run, path))
@@ -134,17 +150,23 @@ async def collect_all(args):
                     if not data.get('finish') or data.get('status') not in TERMINAL_AGENT_STATES:
                         raise RuntimeError('Unscored terminal state: ' + str(data.get('status')))
                     reward = data['reward']
-                    if not isinstance(reward, (int, float)) or not math.isfinite(reward):
-                        raise RuntimeError('Nonfinite reward')
+                    if type(reward) not in (int, float) or not math.isfinite(reward) or not 0 <= reward <= 1:
+                        raise RuntimeError(f'Invalid verifier reward: {reward!r}')
                     result = {'model': primary['served_model_name'], 'task_index': index, 'run_number': run,
                               'result': int(reward == 1), 'raw_reward': reward, 'terminal_status': data['status'],
                               'model_revision': primary['model_revision'], 'attempt': number}
-                    record.update(result=result, status='completed')
+                    record.update(result=result, status='completed', terminal={
+                        key: data[key] for key in ('finish', 'status', 'reward')})
                     write_json(attempt, record)
                     write_json(path / 'result.json', result)
                     return
                 except Exception as exc:
                     record.update(status='infrastructure_error', error=str(exc))
+                    if args.private_worker and sid is None and isinstance(exc, ClientResponseError):
+                        try:
+                            record['worker_cleanup'] = await release_failed_start(client, args.private_worker, exc)
+                        except (ClientError, asyncio.TimeoutError) as cleanup_error:
+                            record['worker_cleanup'] = {'error': str(cleanup_error)}
                     write_json(attempt, record)
                     if record['model_calls']:
                         return
@@ -163,28 +185,33 @@ async def collect_all(args):
                 await episode(index, run, path, service)
                 queue.task_done()
         await asyncio.gather(*(lane(slot) for slot in range(args.concurrency)))
-    rows = [json.loads(path.read_text()) for path in sorted(directory.glob('*/*/result.json'))]
-    (directory / 'results.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
-    rates = collect(rows, indices, primary['served_model_name'])
-    target = args.rates_output
-    if target.exists() and json.loads(target.read_text()) != {args.task_name: rates}:
-        raise ValueError('Refusing to replace existing Frontier rates with different results')
-    write_json(target, {args.task_name: rates})
-    write_json(target.with_suffix('.audit.json'), {'protocol': protocol, 'episodes': len(rows),
-                                                 'results_sha256': hashlib.sha256((directory / 'results.jsonl').read_bytes()).hexdigest()})
+    if args.probe_one:
+        path = directory / args.probe_one / '1/result.json'
+        if not path.is_file():
+            raise RuntimeError('Frontier probe produced no scored terminal result')
+        write_json(directory / 'probe.json', {'scope': 'single AIS integration probe',
+                                               'result': json.loads(path.read_text())})
+        return
+    write_shard_rates(directory, args.rates_output, protocol, indices, primary['served_model_name'])
 
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--service-pool', type=Path, required=True)
+    p.add_argument('--primary-service', type=Path, default=ROOT / 'runs/inference-service.json')
+    p.add_argument('--probe-one', metavar='TASK', help='Collect only round one of this selected task')
     p.add_argument('--indices', type=Path, default=ROOT / 'configs/rl-indices.json')
     p.add_argument('--task-name', default='osworld-rl')
     p.add_argument('--rates-output', type=Path, default=ROOT / 'configs/initial_pass_rate.osworld-rl.json')
     p.add_argument('--controller', default='http://127.0.0.1:18520/api')
+    p.add_argument('--reused-protocol', type=Path, help='Require equivalent sampling and service identity before collection')
+    p.add_argument('--private-worker', help='Direct API for this single collector’s exclusively owned desktop worker')
     p.add_argument('--concurrency', type=int, default=32)
     p.add_argument('--max-attempts', type=int, default=3)
     p.add_argument('--output', type=Path, default=ROOT / 'runs/frontier-initialization')
     args = p.parse_args()
     if not 1 <= args.concurrency <= 64 or not 1 <= args.max_attempts <= 5:
         p.error('Invalid concurrency or retry budget')
+    if args.private_worker and args.concurrency != 1:
+        p.error('A private desktop worker requires a single collector lane')
     asyncio.run(collect_all(args))

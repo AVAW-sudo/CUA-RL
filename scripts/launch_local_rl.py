@@ -1,4 +1,4 @@
-"""Launch the original trainer in a project-owned, single-node Ray cluster."""
+"""Launch the original trainer in a project-owned Ray cluster."""
 import argparse
 import datetime
 import importlib.util
@@ -7,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from trainer_save_boundary import add_final_save
 ROOT = Path(__file__).resolve().parents[1]
 cfg = json.loads((ROOT / 'configs/paths.json').read_text())
 parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--ais-pilot', action='store_true', help='Run the fixed 8-GPU pilot in the foreground using the AIS job environment')
 parser.add_argument('--child', action='store_true')
 parser.add_argument('--config', default='configs/qwen3vl-osworld-local-1step.yaml')
 parser.add_argument('--report', default='reports/smoke-online-rl.json')
@@ -24,9 +26,28 @@ parser.add_argument('--gpus', default='0,1,2,5,6,7')
 parser.add_argument('--run-name', help='Stable run name enables checkpoint resume')
 parser.add_argument('--save-final', action='store_true', help='Export the final update even when it is not a save_interval multiple')
 args = parser.parse_args()
-if socket.gethostname() != 'research-a-worker-1':
+if args.ais_pilot:
+    from ais_pilot import prepare
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    ais_config = prepare(ROOT)
+    args.config = str(ais_config)
+    args.report = str(ais_config.parent / 'training.json')
+    if os.getenv('CUA_DISTRIBUTED_RUN'):
+        from ais_vm_check import save
+        save(Path(os.environ['CUA_DISTRIBUTED_RUN']) / 'trainer.json', {'config': str(ais_config), 'report': args.report})
+    args.run_name = ais_config.parent.name
+    args.gpus = '0' if os.getenv('CUA_DISTRIBUTED_RUN') else '0,1,2,3,4,5,6,7'
+    args.save_final = True
+    if not os.getenv('CUA_DISTRIBUTED_RUN'):
+        prom_dir = ais_config.parent / 'prometheus'
+        prom_dir.mkdir()
+        os.environ['PROMETHEUS_MULTIPROC_DIR'] = str(prom_dir)
+    os.environ['CUA_STRICT_OSWORLD_REWARDS'] = '1'
+    os.environ.setdefault('WANDB_MODE', 'disabled')
+    os.environ.setdefault('TOKENIZERS_PARALLELISM', 'false')
+elif socket.gethostname() != 'research-a-worker-1':
     parser.error('This bring-up launcher is scoped to worker-1')
-if not args.child:
+if not args.ais_pilot and not args.child:
     gpu_ids = [int(gpu) for gpu in args.gpus.split(',')]
     if len(gpu_ids) != len(set(gpu_ids)) or any(gpu not in range(8) for gpu in gpu_ids):
         parser.error('GPU list must contain distinct IDs in 0..7')
@@ -61,23 +82,30 @@ gpu_ids = [int(gpu) for gpu in args.gpus.split(',')]
 assert len(gpu_ids) == config['num_gpu_per_mach'], 'GPU allocation must match the configuration'
 # A short local temp path avoids UNIX socket length limits and any shared Ray session.
 ray_tmp = '/tmp/cua-rl-ray-' + str(os.getuid()) + '-' + str(os.getpid())
-ray.init(address='local', num_gpus=len(gpu_ids), num_cpus=32, resources={'big_mem': 32}, include_dashboard=False,
-         object_store_memory=8 * 1024**3, _temp_dir=ray_tmp,
-         runtime_env={'env_vars': {k: v for k, v in os.environ.items() if k in {
-             'LD_LIBRARY_PATH', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
-             'WANDB_MODE', 'TOKENIZERS_PARALLELISM', 'PYTHONUNBUFFERED', 'HF_HUB_OFFLINE', 'NO_PROXY', 'NCCL_DEBUG',
-             'VLLM_NO_USAGE_STATS', 'PROMETHEUS_MULTIPROC_DIR', 'VLLM_CACHE_ROOT', 'TRITON_CACHE_DIR'}}})
+worker_keys = ('LD_LIBRARY_PATH', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
+               'WANDB_MODE', 'TOKENIZERS_PARALLELISM', 'PYTHONUNBUFFERED', 'HF_HUB_OFFLINE', 'NO_PROXY',
+               'NCCL_DEBUG', 'CUA_STRICT_OSWORLD_REWARDS', 'VLLM_NO_USAGE_STATS', 'PROMETHEUS_MULTIPROC_DIR',
+               'VLLM_CACHE_ROOT', 'TRITON_CACHE_DIR')
+runtime_env = {'env_vars': {key: os.environ[key] for key in worker_keys if key in os.environ}}
+distributed = os.getenv('CUA_DISTRIBUTED_RUN') if args.ais_pilot else None
+if distributed:
+    ray.init(address=os.environ['CUA_RAY_ADDRESS'], runtime_env=runtime_env)
+else:
+    ray.init(address='local', num_gpus=len(gpu_ids), num_cpus=None if args.ais_pilot else 32,
+             resources={'big_mem': 32}, include_dashboard=False, object_store_memory=8 * 1024**3,
+             _temp_dir=ray_tmp, runtime_env=runtime_env)
 try:
     source = ROOT / 'SCALE-CUA/scalecua_rl/examples/training/async_trainer.py'
     trainer_source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
     if args.save_final:
         content = add_final_save(source.read_text())
-        source = ROOT / 'runs/original-rl-pipeline/trainer-with-final-save.py'
+        script_dir = report_path.parent if args.ais_pilot else ROOT / 'runs/original-rl-pipeline'
+        source = script_dir / 'trainer-with-final-save.py'
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text(content)
         (source.with_suffix('.audit.json')).write_text(json.dumps({
             'original_sha256': trainer_source_sha256, 'adapted_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
-            'scope': 'Save final boundary and retain checkpoint saves on skipped empty batches; training and sampling math unchanged'}, indent=2) + '\n')
+            'scope': 'Save final and skipped checkpoint boundaries and await all actor writes before publishing the iteration'}, indent=2) + '\n')
     spec = importlib.util.spec_from_file_location('scalecua_async_trainer', source)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -89,13 +117,24 @@ try:
     valid_updates = bool(updates) and all(math.isfinite(float(row['actor/grad_norm'])) for row in updates)
     nonzero_updates = sum(float(row['actor/grad_norm']) > 0 for row in updates)
     report = {'passed': valid_updates and nonzero_updates > 0, 'execution_completed': True, 'updates': updates, 'run_name': config['run_name'],
-              'scope': 'Original algorithm with explicitly recorded public-agent and TCG resource adaptations',
-              'physical_gpus': gpu_ids,
+              'scope': ('AIS original GRPO pilot with a dedicated OSWorld worker' if args.ais_pilot
+                        else 'Original algorithm with explicitly recorded public-agent and TCG resource adaptations'),
               'checkpoint_root': str(Path(config['save_path']) / config['project_name'] / config['run_name']),
               'checkpoint_saved': bool(list((Path(config['save_path']) / config['project_name'] / config['run_name']).glob('global_step_*'))),
               'metrics_files': [str(log) for log in logs], 'config': args.config,
               'nonzero_gradient_updates': nonzero_updates,
               'effective_group_fraction': [row.get('rl/overall/effective_uids') for row in updates]}
+    if args.ais_pilot:
+        from ais_pilot import final_checkpoint
+        checkpoint = final_checkpoint(Path(report['checkpoint_root']), config['max_steps'] - 1,
+                                      config['actor']['tensor_model_parallel_size'])
+        report.update(checkpoint_saved=True, final_checkpoint=str(checkpoint))
+        if distributed:
+            report['placement'] = json.loads((Path(distributed) / 'placement.json').read_text())
+        else:
+            report.update(logical_gpus=gpu_ids, cuda_visible_devices=os.environ.get('CUDA_VISIBLE_DEVICES'))
+    else:
+        report['physical_gpus'] = gpu_ids
     report_path.write_text(json.dumps(report, indent=2) + '\n')
     assert valid_updates, 'Trainer returned without an actor update with finite gradient norm'
     if not nonzero_updates:

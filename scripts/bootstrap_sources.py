@@ -41,11 +41,12 @@ def main():
     checkout(source["url"], source["commit"], ROOT / source["path"])
     if args.local_patch:
         repo = ROOT / source["path"]
-        patch = ROOT / 'patches/local-bringup.patch'
-        reverse = subprocess.run(['git', '-C', str(repo), 'apply', '--reverse', '--check', str(patch)], capture_output=True)
-        if reverse.returncode:
-            subprocess.run(['git', '-C', str(repo), 'apply', '--check', str(patch)], check=True)
-            subprocess.run(['git', '-C', str(repo), 'apply', str(patch)], check=True)
+        for name in ('local-bringup.patch', 'rl-integrity.patch', 'ais-distributed-training.patch'):
+            patch = ROOT / 'patches' / name
+            reverse = subprocess.run(['git', '-C', str(repo), 'apply', '--reverse', '--check', str(patch)], capture_output=True)
+            if reverse.returncode:
+                subprocess.run(['git', '-C', str(repo), 'apply', '--check', str(patch)], check=True)
+                subprocess.run(['git', '-C', str(repo), 'apply', str(patch)], check=True)
     if args.data:
         source = lock["training_data"]
         target = ROOT / "data/ScaleCUA"

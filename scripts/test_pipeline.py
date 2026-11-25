@@ -136,17 +136,29 @@ class PipelineTests(unittest.TestCase):
             continue
         actor.update(data)
         if global_step % save_interval == 0:
-            actor.save_checkpoint(global_step)
+            checkpoint_dir = global_step
+            actor.save_checkpoint(str(checkpoint_dir))
+            actor.publish(global_step)
         ray.get(actor.step_finished())
         global_step += 1
 '''
         namespace = {}
         exec(add_final_save(source), namespace)
-        updates, saves = [], []
-        actor = types.SimpleNamespace(update=updates.append, save_checkpoint=saves.append, step_finished=lambda: None)
+        updates, saves, published = [], [], []
+        actor = types.SimpleNamespace(update=updates.append, save_checkpoint=saves.append, publish=published.append,
+                                      step_finished=lambda: None)
         namespace['run']([1, 2, None], actor, types.SimpleNamespace(get=lambda x: x))
         self.assertEqual(updates, [1, 2])
-        self.assertEqual(saves, [3])
+        self.assertEqual(saves, ['3'])
+        self.assertEqual(published, [3])
+        actor.save_checkpoint = lambda _: 'failed future'
+        def get(ref):
+            if ref == 'failed future':
+                raise OSError('out of space on actor')
+        for batch in (None, 1):
+            with self.assertRaisesRegex(OSError, 'out of space'):
+                namespace['run']([batch], actor, types.SimpleNamespace(get=get))
+        self.assertEqual(published, [3])
         actual = (ROOT / 'SCALE-CUA/scalecua_rl/examples/training/async_trainer.py').read_text()
         compile(add_final_save(actual), '<adapted trainer>', 'exec')
 

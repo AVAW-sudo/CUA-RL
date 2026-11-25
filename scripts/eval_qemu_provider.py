@@ -6,8 +6,11 @@ import logging
 import os
 from pathlib import Path
 import signal
+import shutil
 import socket
 import time
+import tempfile
+import uuid
 
 from PIL import Image
 from qemu_runtime import ROOT, LocalVM
@@ -70,6 +73,53 @@ class QemuProvider:
         raise NotImplementedError('Evaluation uses fresh base-image overlays')
 
 
+class AisEvalProvider(QemuProvider):
+    """Use ephemeral guest ports and a node-local overlay on AIS."""
+    def start_emulator(self, path_to_vm, headless, os_type):
+        if self.vm is not None:
+            return
+        from ais_vm_check import Qemu, VM, check_sft_restore, save
+        out = Path(OPTIONS['audit_directory']).parent / 'vms' / uuid.uuid4().hex
+        out.mkdir(parents=True)
+        scratch = tempfile.TemporaryDirectory(prefix='sft-vm-')
+        self.lease = scratch
+        try:
+            prefix = os.environ.get('CUA_QEMU_PREFIX')
+            path = os.environ.get('CUA_SFT_TEMPLATE')
+            template = Path(path) if path else None
+            self.vm = VM(Qemu(Path(prefix) if prefix else None), Path(scratch.name), out, 0)
+            started = time.monotonic()
+            self.vm.start(path_to_vm, OPTIONS['accelerator'], OPTIONS['cpus'], OPTIONS['memory_mb'],
+                          worker_address='127.0.0.1', template=template)
+            owner = {'id': self.vm.token, 'pid': self.vm.process.pid, 'hostname': socket.gethostname(),
+                     'drive': f'file={self.vm.work}/disk.qcow2,if=virtio,format=qcow2'}
+            tmp = out / 'owner.tmp'
+            tmp.write_text(json.dumps(owner))
+            tmp.replace(out / 'owner.json')
+            self.vm.wait_desktop(OPTIONS['boot_timeout'], 'ready.png')
+            if template:
+                save(out / 'restore.json', check_sft_restore(self.vm, template))
+            save(out / 'boot.json', {'mode': 'snapshot' if template else 'cold',
+                                     'seconds_to_ready': time.monotonic() - started})
+        except BaseException:
+            self.stop_emulator(path_to_vm)
+            raise
+
+    def get_ip_address(self, path_to_vm):
+        ports = self.vm.ports
+        return '127.0.0.1:' + ':'.join(str(ports[p]) for p in (5000, 9222, 8006, 8080, 8000))
+
+    def stop_emulator(self, path_to_vm):
+        try:
+            if self.vm is not None:
+                self.vm.stop()
+        finally:
+            self.vm = None
+            if self.lease:
+                self.lease.cleanup()
+                self.lease = None
+
+
 class QemuManager:
     def get_vm_path(self, **kwargs):
         return OPTIONS['base_image']
@@ -78,11 +128,12 @@ class QemuManager:
 def factory(provider_name, region, use_proxy=False):
     if provider_name != 'docker':
         raise ValueError('This adapter only replaces the explicitly selected docker provider API')
-    return QemuManager(), QemuProvider()
+    return QemuManager(), AisEvalProvider() if OPTIONS.get('ais') else QemuProvider()
 
 
 def install(options):
     """Preserve upstream agent/actions/verifier, checking setup errors separately."""
+    OPTIONS.clear()
     OPTIONS.update(options)
     import desktop_env.providers
     import desktop_env.desktop_env
@@ -92,12 +143,18 @@ def install(options):
 
     class CheckedDesktopEnv(Base):
         def __init__(self, *args, **kwargs):
+            if OPTIONS.get('audit_directory'):
+                kwargs['cache_dir'] = str(Path(OPTIONS['audit_directory']).parent / 'verifier-cache')
             if OPTIONS.get('proxy_policy') == 'direct':
                 kwargs['enable_proxy'] = False
             super().__init__(*args, **kwargs)
 
         def _start_emulator(self):
             super()._start_emulator()
+            self._guest_input = None
+            if OPTIONS.get('ais') and os.getenv('CUA_SFT_RESIDENT_GUI') == '1':
+                from sft_gui_input import GuestInput
+                self._guest_input = GuestInput(self.provider.vm, self.controller)
             try:
                 expected_size = (self.screen_width, self.screen_height)
                 self.setup_controller._screen_size_setup(*expected_size)
@@ -117,7 +174,8 @@ def install(options):
                     if app == 'FLASK_PORT=8000' and OPTIONS.get('benchmark') == 'scienceboard':
                         from scienceboard_compat import prepare_grass
                         audit = prepare_grass(self.setup_controller)
-                        (self.provider.vm.directory / 'scienceboard-guest-patch.json').write_text(json.dumps(audit, indent=2) + '\n')
+                        (Path(OPTIONS['audit_directory']) / (self.provider.vm.token + '-grass.json') if OPTIONS.get('ais')
+                         else self.provider.vm.directory / 'scienceboard-guest-patch.json').write_text(json.dumps(audit, indent=2) + '\n')
                     value = original_launch(command, shell=shell)
                     if app:
                         # Inspect the guest socket table instead of calling app
@@ -142,7 +200,7 @@ def install(options):
                                         if app == 'FLASK_PORT=8000' and OPTIONS.get('benchmark') == 'scienceboard':
                                             # GRASS binds before its GUI frame exists. Its dump
                                             # safely returns HTTP 500 until initialization ends.
-                                            ready = requests.get(f'http://{self.vm_ip}:8000/dump', timeout=10)
+                                            ready = requests.get(f'http://{self.vm_ip}:{self.app_port}/dump', timeout=10)
                                             if ready.status_code != 200:
                                                 time.sleep(2)
                                                 continue
@@ -200,10 +258,15 @@ def install(options):
                 raise
 
         def reset(self, task_config=None, seed=None, options=None):
+            if task_config and OPTIONS.get('ais') and OPTIONS.get('benchmark') == 'osworld' and os.getenv('CUA_SFT_SETUP_INPUTS'):
+                # Copy only published, digest-verified initial inputs. Preserve this episode's own verifier outputs separately.
+                inputs = Path(os.environ['CUA_SFT_SETUP_INPUTS']) / task_config['id']
+                if inputs.is_dir():
+                    shutil.copytree(inputs, Path(self.cache_dir_base) / task_config['id'], dirs_exist_ok=True)
             if task_config is not None and OPTIONS.get('benchmark') == 'scienceboard':
                 from scienceboard_compat import normalize_task
                 original = task_config
-                task_config, changes = normalize_task(task_config)
+                task_config, changes = normalize_task(task_config, OPTIONS.get('scienceboard_setup', 'released'))
                 audit = {'task_id': original['id'], 'changes': changes,
                          'original_task': original, 'effective_task': task_config}
                 directory = Path(OPTIONS['audit_directory'])
@@ -213,6 +276,15 @@ def install(options):
             if task_config is not None and self._last_setup_ok is not True:
                 raise RuntimeError('Task setup failed after upstream retries; not a model failure')
             return obs
+
+        def step(self, action, *args, **kwargs):
+            if self._guest_input is None:
+                return super().step(action, *args, **kwargs)
+            self.controller.execute_python_command = self._guest_input.execute
+            try:
+                return super().step(action, *args, **kwargs)
+            finally:
+                self.controller.execute_python_command = self._guest_input.original
 
         def evaluate(self):
             # Some upstream verifiers swallow HTTP failures and return zero. Keep
@@ -245,19 +317,27 @@ def install(options):
     return CheckedDesktopEnv
 
 
-def cleanup_run(run_id):
+def cleanup_run(run_id, output=None):
     """Clean only this run's exact QEMU identities after worker exit/interruption."""
     owned = []
-    for path in (ROOT / 'runs/vms').glob('*/state.json'):
+    def alive(state):
+        proc = Path(f'/proc/{state["pid"]}/cmdline')
+        try:
+            identity = state.get('drive') or 'cua-rl-' + state['id']
+            return identity.encode() in proc.read_bytes().split(b'\0')
+        except (FileNotFoundError, ProcessLookupError):
+            return False
+    if output is not None:
+        for path in (Path(output) / 'vms').glob('*/owner.json'):
+            state = json.loads(path.read_text())
+            if state['hostname'] == socket.gethostname() and alive(state):
+                os.kill(state['pid'], signal.SIGTERM)
+                owned.append(state)
+    legacy_states = () if OPTIONS.get('ais') else (ROOT / 'runs/vms').glob('*/state.json')
+    for path in legacy_states:
         state = json.loads(path.read_text())
         if state.get('run_id') != run_id or state['hostname'] != socket.gethostname():
             continue
-        def alive(s):
-            p = Path(f'/proc/{s["pid"]}/cmdline')
-            try:
-                return ('cua-rl-' + s['id']).encode() in p.read_bytes().split(b'\0')
-            except FileNotFoundError:
-                return False
         if alive(state):
             os.kill(state['pid'], signal.SIGTERM)
             owned.append(state)

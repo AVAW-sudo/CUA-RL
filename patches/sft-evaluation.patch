@@ -1,0 +1,104 @@
+--- a/osworld_eval/desktop_env/evaluators/getters/chrome.py
++++ b/osworld_eval/desktop_env/evaluators/getters/chrome.py
+@@ -1201,7 +1201,7 @@
+                         ], "shell": False})
+ 
+                     headers = {"Content-Type": "application/json"}
+-                    requests.post("http://" + host + ":" + server_port + "/setup" + "/launch", headers=headers, data=payload)
++                    requests.post(f"http://{host}:{server_port}/setup/launch", headers=headers, data=payload, timeout=30).raise_for_status()
+                     time.sleep(5)
+                     browser = p.chromium.connect_over_cdp(remote_debugging_url)
+                     logger.info(f"[PDF_FROM_URL] Successfully connected to new Chrome instance")
+@@ -1304,7 +1304,7 @@
+                         ], "shell": False})
+ 
+                     headers = {"Content-Type": "application/json"}
+-                    requests.post("http://" + host + ":" + server_port + "/setup" + "/launch", headers=headers, data=payload)
++                    requests.post(f"http://{host}:{server_port}/setup/launch", headers=headers, data=payload, timeout=30).raise_for_status()
+                     time.sleep(5)
+                     browser = p.chromium.connect_over_cdp(remote_debugging_url)
+                     logger.info(f"[CHROME_SAVED_ADDRESS] Successfully connected to new Chrome instance")
+@@ -1417,7 +1417,7 @@
+                         ], "shell": False})
+ 
+                     headers = {"Content-Type": "application/json"}
+-                    requests.post("http://" + host + ":" + server_port + "/setup" + "/launch", headers=headers, data=payload)
++                    requests.post(f"http://{host}:{server_port}/setup/launch", headers=headers, data=payload, timeout=30).raise_for_status()
+                     time.sleep(5)
+                     browser = p.chromium.connect_over_cdp(remote_debugging_url)
+                     logger.info(f"[SEARCH_RESULTS] Successfully connected to new Chrome instance")
+@@ -2391,6 +2391,7 @@
+                     logger.error(f"[RECREATION_PAGE] Failed to click search button: {e}")
+                     raise e
+ 
++                try:
+                     # Step 4: Wait for search results page to load, then click search result
+                     logger.info(f"[RECREATION_PAGE] Waiting for search results page...")
+                     # Wait for URL to change to search results (avoids being blocked by ongoing navigation)
+--- a/osworld_eval/desktop_env/evaluators/metrics/docs.py
++++ b/osworld_eval/desktop_env/evaluators/metrics/docs.py
+@@ -10,7 +10,6 @@
+ from io import BytesIO
+ from typing import List, Dict, Any
+ 
+-# import easyocr
+ from PIL import Image
+ from docx import Document
+ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_TAB_ALIGNMENT
+@@ -449,6 +448,7 @@
+         
+         # Now attempt OCR with error handling
+         try:
++            import easyocr
+             reader = easyocr.Reader(['en'])
+             result = reader.readtext(actual_image_path)
+             extracted_text = ' '.join([entry[1] for entry in result])
+--- a/osworld_eval/desktop_env/controllers/python.py
++++ b/osworld_eval/desktop_env/controllers/python.py
+@@ -1,4 +1,6 @@
++import io
+ import json
++from PIL import Image
+ import logging
+ import random
+ from typing import Any, Dict, Optional
+@@ -26,21 +28,16 @@
+ 
+     @staticmethod
+     def _is_valid_image_response(content_type: str, data: Optional[bytes]) -> bool:
+-        """Quick validation for PNG/JPEG payload using magic bytes; Content-Type is advisory.
+-        Returns True only when bytes look like a real PNG or JPEG.
+-        """
+-        if not isinstance(data, (bytes, bytearray)) or not data:
++        if not data:
+             return False
+-        # PNG magic
+-        if len(data) >= 8 and data[:8] == b"\x89PNG\r\n\x1a\n":
++        try:
++            with Image.open(io.BytesIO(data)) as frame:
++                if frame.format not in ('PNG', 'JPEG'):
++                    return False
++                frame.load()
+             return True
+-        # JPEG magic
+-        if len(data) >= 3 and data[:3] == b"\xff\xd8\xff":
+-            return True
+-        # If server explicitly marks as image, accept as a weak fallback (some environments strip magic)
+-        if content_type and ("image/png" in content_type or "image/jpeg" in content_type or "image/jpg" in content_type):
+-            return True
+-        return False
++        except (OSError, ValueError, TypeError):
++            return False
+ 
+     def get_screenshot(self) -> Optional[bytes]:
+         """
+@@ -67,8 +64,7 @@
+                 logger.info("Retrying to get screenshot.")
+             time.sleep(self.retry_interval)
+ 
+-        logger.error("Failed to get screenshot.")
+-        return None
++        raise RuntimeError("No decodable guest screenshot after read retries")
+ 
+     def get_accessibility_tree(self) -> Optional[str]:
+         """

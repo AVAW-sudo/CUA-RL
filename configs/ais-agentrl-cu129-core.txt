@@ -1,0 +1,10 @@
+# Core packages verified by the AIS CUDA 12.9 training runtime check (CPython 3.12).
+torch==2.10.0+cu129
+vllm==0.19.0
+ray==2.54.1
+transformers==4.57.6
+flash-attn==2.8.3+cu.12.9.torch.2.10
+transformer-engine==2.12.0
+megatron-core==0.17.0
+ms-swift==4.1.0
+mcore-bridge==1.2.1
