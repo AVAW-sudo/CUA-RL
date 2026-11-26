@@ -2,6 +2,16 @@
 
 **决策提案 · 2026-11-25。** 在 8 × A100 上，建议从官方 ScaleCUA Qwen3-VL-8B OSWorld SFT 起跑，优先训练**跨来源读取并写入指定文件**和 **Calc 跨表查价、计算与汇总**。选题时检查每个官方 RL 变体是否保留了失分的关键操作。原 64 道 pilot 已预跑；本轮可复用其中 56 道。扩大后的候选池和实时覆盖见下文。[模型与数据版本](../configs/sources.lock.json) · [官方 RL 题库](https://github.com/THUDM/SCALE-CUA#dataset)
 
+## 截至 11 月 26 日，256 道里已有多少能用
+
+**现有 56/256 道达标（21.9%），还差 200 道。** 主练指保留了原题失分的关键操作，现有 **8/128**，来自 5 个原始任务。分步题只训练其中一个环节，现有 **45/64**。广覆盖题保留预先抽取的其他桌面操作，现有 **3/64**。每道达标题都有四次有效试跑和评分器对照。早上的 46 道全部保留，本次新增 2 道主练、6 道分步和 2 道广覆盖。[累计逐题名单](../configs/dataset-screen/strict-expanded-20261126.jsonl) · [早上的 46 道](../configs/dataset-screen/strict-reviewed-20261126.jsonl)
+
+新增的两道主练分别是用工时和费率算工资再扣税（四次中三次满分）、按等级表回填三位学生的成绩（四次中一次满分）。后者的另三次分别填对两行、零行和一行，评分能区分完成程度。其中五道分步题分别练整列查负责人、单行查负责人、找最早论文并写回标题、逐行提取发表年份、把指定页标题写入同页备注。五道的原题 SFT 都曾满分，变体的失分提供了这些子操作还有训练空间的证据。[8 题实测](../runs/ais-dataset-screen/23549884/summary.json) · [16 题实测](../runs/ais-dataset-screen/23554958/summary.json)
+
+另一道分步题要求逐周计算利润并写入总计行，四次成绩为 1、1、0.7、1。两道广覆盖题来自预先抽取的 pilot，分别练订单数量汇总和在指定路径新建目录，均为四次满分。这两题的旧作业没有逐题记录未操作时的桌面分数，本轮在原始素材或相同目录结构上运行官方评分规则，两题初态均为零分。[补齐的分数](../runs/dataset-screening/primary-20261126/local-file-repair-li84dyby/summary.json) · [广覆盖题评分对照](../runs/dataset-screening/primary-20261126/followup-controls.json)
+
+早上冻结的 256 个候选和过夜作业最后导出的 256 个候选都取得了四次评分。早上的名单包含最初严核的 46 道，过夜最终名单包含其中 45 道。上面的 56 道按跨批次唯一任务计数。[早上冻结的题单](../runs/dataset-screening/skill-review-20261126-P1XYhfLe/prompts-256.jsonl) · [过夜作业最终题单](../runs/ais-dataset-screen/23533722/prompts-256.jsonl)
+
 ## 我们的 SFT 弱在哪里
 
 官方 OSWorld 361 题中，358 题有分，平均 **44.32%**，含部分得分。计入 3 道未评分题后，361 题均分的上下界为 **43.96%–44.79%**。为避免用测试成绩选训练题，弱项诊断只看其中与 **RL 训练划分**对应的 295 个原始任务。下表是本地 SFT 实测。[SFT 审计记录（共享工作区）](../runs/ais-sft-evaluations/23495234/full/summary.json) · [划分依据](../configs/research-splits/manifest.json)
@@ -65,11 +75,27 @@ CUA-Lite 的结果说明为什么要检验留出表现。其 4B 模型在 Lite.S
 
 11 月 26 日上午用现成的四次成绩复查了 108 道混合难度题，含冻结集剩余的 81 道和快照中冻结集外的 27 道。逐题读指令后，97 道以排版、软件设置等其他技能为主。剩下 11 道检查官方判分，9 道会给关键错例满分。例如列车记录去重题接受八条编造的记录，两道幻灯片汇总题接受空白汇总页。另 2 道只需写入题面给定的表头或占位值。本批新增主练 0 道。[108 道逐题去向和对照分数（共享工作区）](../runs/dataset-screening/screen-next-20261126/local-review.jsonl)
 
-下一单 `bash AIS_ENTRY.txt screen-next` 只试跑 8 道新 Calc 变体，涉及查表、日期提取和销售计算等操作。5 个原题家族的原题 SFT 均满分，本批用于测相邻变体自身难度。8 道均通过离线初态、正确产物和错例检查。每个 rank 一题，先做桌面初态检查，再给初态零分的题各采 4 次。[冻结名单](../configs/dataset-screen/expansion-20261126.json) · [本轮判分记录（共享工作区）](../runs/dataset-screening/screen-next-20261126/controls.json) · [首批两道判分记录（共享工作区）](../runs/dataset-screening/expand-check-20261126-RtcU6sTT/report.json)
+`screen-next` 已完成。作业 23549884 于北京时间 12:36 汇总，从首个分片写入题单到汇总约 22 分钟。8 道 Calc 变体的桌面初态均得零分，32 次预跑取得 31 个有效评分。5 个家族的原题 SFT 均满分，变体难度如下。[冻结名单](../configs/dataset-screen/expansion-20261126.json) · [作业汇总（共享工作区）](../runs/ais-dataset-screen/23549884/summary.json)
+
+- 整列查负责人、找最早发表论文并写回标题，各 1/4 满分；从日期提取整列年份 3/4 满分。三道均已通过离线正例和错例检查，列为分步训练候选。[离线判分记录](../runs/dataset-screening/screen-next-20261126/controls.json) · [查负责人和最早论文的判分记录](../runs/dataset-screening/expand-check-20261126-RtcU6sTT/report.json)
+- 全表替换、销售额求和、逐周利润率和累计销售额均为 4/4 满分，作为已掌握操作的对照。
+- 逐周利润加总计有三次有效奖励（1、0.7、1）。另一次在桌面评分器读取工作簿时发生 `ChunkedEncodingError`，成功率留空。[评分日志](../runs/ais-desktop-services/worker-z7n7k39r/worker.log)
 
 扩围作业 `bash AIS_ENTRY.txt screen-wide` 接在 `screen-next` 后，独立分片试跑 16 道新题，覆盖 11 个原题家族。其中 3 道 Calc 包括工时计税、按评分区间查等级和查负责人；7 道 Impress 覆盖从标题抄到备注、定位指定幻灯片写入标题或表格；6 道 OS 考文本变换和文件整理。工时计税、查等级、按目录层级备份这三道的原题 SFT 为零。其余 13 道用于测相邻技能的难度。已核对训练划分、历史题单及规范化题面，并剔除与留出题面或已知素材重合的候选。[冻结名单](../configs/dataset-screen/wide-20261126.json)
 
 16 道的离线初态均为零，正确产物均为满分，逐题构造的关键错例均扣分。例如双页插表只完成一页得 0.5，把表格放错页得 0。另两道插表题接受包含目标词的错误表头，已排除。八卡按每卡两题执行，先测真实桌面初态，初态零分后再各采四次。训练集收录仍依赖实际难度和技能复核。[逐题对照（共享工作区）](../runs/dataset-screening/wide-20261126/selected-controls.json)
+
+作业 23554958 于北京时间 13:58 完成扩围筛选，八个分片从写入题单到汇总约 34 分钟。16 道题的真实桌面初态均为零，64 次试跑取得 63 个有效评分。15 道四次齐全，其中 7 道有时满分、有时失分，7 道全满分，1 道四次均为零。建议优先保留工时计税（3/4 满分）和按区间查等级（1/4 满分）。两道的原题 SFT 均得零分。查等级四次分别填对 2、0、1、3 个目标单元格，可检验部分完成的进步。[逐题汇总](../runs/ais-dataset-screen/23554958/summary.json) · [评分字段与离线对照](<CUA-RL Dataset Audit 32.json>)
+
+目录备份题四次均正常结束，模型在最后回复中都列出了多一层 `test_environment` 的路径，和评分器要求的 `backup/dir1/…` 等目标不符，列为难题复核候选。改幻灯片标题题已有三次满分，另一次评分时读取来宾文件发生 `ChunkedEncodingError`，四次成功率留空。合并 `screen-next` 与 `screen-wide`，共 24 道新题、94/96 次有效评分，22 道四次齐全，10 道有时满分、有时失分。主练和分步题的配额仍按各题对应的失分操作单独复核。[备份题轨迹](../runs/ais-dataset-screen/23554958/rank-4/episodes/os_5c1075ca-bb34-46a3-a7a0-029bd7463e79_traj_verify_5) · [标题题评分日志](../runs/ais-desktop-services/worker-jso0tdxh/worker.log)
+
+### 11 月 26 日下午的定向扩围
+
+这轮把判分器容易误判的题先留在 CPU 上处理。对官方训练库 1,691 道题，专门检查了用 `cat` 读取计数结果、再用单个数字做子串匹配的评分规则。找到 4 道，分别把正确数值扩大十倍后交给原评分函数，4 道仍得满分。例如 PHP 行数写成 540 和 54 得分相同。另有一道清理 notebook 文件的题，按指令保留所有 `*_failed.ipynb` 仍得零分，因为排除串 `d.ipynb` 同时命中了正确文件名。五道均未进入本轮八卡队列。[数字错例测试](../runs/dataset-screening/primary-20261126/numeric-false-positives.json) · [初态、正确产物与错例](../runs/dataset-screening/primary-20261126/followup-controls.json)
+
+八卡入口为 `bash AIS_ENTRY.txt screen-expand`，每个 rank 一题、两个桌面，初态零分后各跑四次。五道首次筛选，覆盖按目录层级复制、移动指定目录、按文件名定位后重命名或移动，以及逐行清理标题写回指定列。相同素材只改大小写方向的两个变体保留一个。另三道为难题补采，分别是净销售额与毛利、两列单位换算、保留目录层级备份。这三道在历史四次预跑中均未满分，本地正确产物均得满分。新四次单独记录，原始四次和出处保留在复核清单中。合计最多新增 32 次试跑，八道候选均未计入上面的 56 道。[八卡题单](../configs/dataset-screen/targeted-20261126.json) · [用途、历史奖励和判分对照](../configs/dataset-screen/targeted-20261126-review.jsonl)
+
+前两批各有一次评分下载中断，两次在原桌面重试后均收到完整文件。旧的外层检查仍保留了第一次错误。现在只在同一次只读文件调用拿到完整文件后清除该调用的分块传输错误。重试耗尽或其他评分操作失败仍会标记未评分。在本地 A100 复用两道题已有的六条轨迹，各补跑一次。两批合计 24 题、96 次评分已齐。逐周利润题进入分步名单。另一道只要求按指令改幻灯片标题，四次均满分，留作对照。[评分观察器](../scripts/ais_verifier.py) · [回归测试](../scripts/test_ais_verifier_download.py) · [两题补跑结果](../runs/dataset-screening/primary-20261126/local-file-repair-li84dyby/summary.json)
 
 ## 实验与验收
 

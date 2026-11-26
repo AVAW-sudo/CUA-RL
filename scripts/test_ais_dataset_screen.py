@@ -11,6 +11,33 @@ from overnight_prompts import export
 
 
 class DatasetScreenTest(unittest.TestCase):
+    def test_targeted_queue_separates_new_tasks_from_extra_trials(self):
+        result = subprocess.run(['bash', str(ROOT / 'AIS_ENTRY.txt'), 'screen-expand', '--plan'],
+                                capture_output=True, text=True, check=True)
+        batch = json.loads(result.stdout)
+        self.assertTrue(batch['check_initial_state'])
+        self.assertEqual((batch['ranks'], batch['desktops_per_rank'], batch['trials']), (8, 2, 32))
+        evidence = MANIFEST.parent / 'targeted-20261126-review.jsonl'
+        rows = [json.loads(line) for line in evidence.read_text().splitlines()]
+        self.assertEqual([[r['task_index']] for r in rows], batch['shards'])
+        previous = set()
+        for path in (*DEFAULT_BATCHES, MANIFEST, MANIFEST.parent / 'expansion-20261126.json',
+                     MANIFEST.parent / 'wide-20261126.json', ROOT / 'configs/original-pilot/train-indices.json'):
+            previous.update(json.loads(path.read_text()))
+        self.assertEqual(sum(r['purpose'] == 'first_four' for r in rows), 5)
+        for row in rows:
+            if row['purpose'] == 'first_four':
+                self.assertNotIn(row['task_index'], previous)
+            else:
+                self.assertEqual(row['purpose'], 'additional_four')
+                self.assertIn(row['task_index'], previous)
+                self.assertEqual(len(row['prior_raw_rewards']), 4)
+                self.assertTrue(all(0 <= reward < 1 for reward in row['prior_raw_rewards']))
+            controls = row['offline_controls']
+            self.assertEqual((controls['untouched'], controls['correct']), (0, 1))
+            wrong = [v for k, v in controls.items() if k not in ('untouched', 'correct')]
+            self.assertTrue(wrong and all(0 <= v < 1 for v in wrong))
+
     def test_wide_entry_screens_fresh_training_variants(self):
         result = subprocess.run(['bash', str(ROOT / 'AIS_ENTRY.txt'), 'screen-wide', '--plan'],
                                 capture_output=True, text=True, check=True)

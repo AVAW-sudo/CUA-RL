@@ -11,6 +11,24 @@ import requests
 
 
 _score = ContextVar('ais_verifier_requests', default=None)
+_download_errors = ContextVar('ais_verifier_download', default=None)
+
+
+def read_guest_file(get_file, path):
+    """Let one upstream get_file call finish its own retries before judging it."""
+    scope = _score.get()
+    if scope is None:
+        return get_file(path)
+    errors = []
+    token = _download_errors.set(errors)
+    try:
+        data = get_file(path)
+        if isinstance(data, bytes):
+            errors.clear()
+        return data
+    finally:
+        _download_errors.reset(token)
+        scope[1].extend(errors)
 
 
 def install_scoring_observer(startup_budget=None):
@@ -36,7 +54,12 @@ def install_scoring_observer(startup_budget=None):
         try:
             response = send(session, request, **kwargs)
         except requests.RequestException as exc:
-            scope[1].append(f'{route} {type(exc).__name__}')
+            errors = scope[1]
+            download = _download_errors.get()
+            if (download is not None and route == '/file' and request.method == 'POST'
+                    and isinstance(exc, requests.exceptions.ChunkedEncodingError)):
+                errors = download
+            errors.append(f'{route} {type(exc).__name__}')
             raise
         if response.status_code >= 500:
             scope[1].append(f'{route} HTTP {response.status_code}')

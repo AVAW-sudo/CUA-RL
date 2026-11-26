@@ -29,7 +29,7 @@ from src.session import OSWorldSession
 from src.task import OSWorldTask
 from ais_vm_check import Qemu, VM, check_sft_restore
 from qemu_runtime import require_kvm
-from ais_verifier import install_scoring_observer, prepare_guest_verifier, run_bash_once, scoring_requests
+from ais_verifier import install_scoring_observer, prepare_guest_verifier, read_guest_file, run_bash_once, scoring_requests
 
 
 _desktop_session = ContextVar('ais_desktop_session', default=None)
@@ -123,6 +123,9 @@ class AisScreenshotController(PythonController):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.owner = _desktop_session.get()
+
+    def get_file(self, file_path):
+        return read_guest_file(super().get_file, file_path)
 
     def run_bash_script(self, script, timeout=30, working_dir=None):
         return run_bash_once(self.http_server, script, timeout, working_dir)
