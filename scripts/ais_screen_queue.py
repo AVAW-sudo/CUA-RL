@@ -21,6 +21,7 @@ from overnight_prompts import write_lines
 CONFIG = ROOT / 'configs/dataset-screen'
 ROSTER = CONFIG / 'expand-queue.jsonl'
 REVIEWED = CONFIG / 'strict-expanded-20261126.jsonl'
+ARCHIVE_REVIEW = CONFIG / 'expand-review.jsonl'
 RUNS = ROOT / 'runs/ais-screen-expand'
 QUOTAS = {'main': 128, 'component': 64, 'breadth': 64}
 
@@ -276,11 +277,18 @@ def main():
     catalog = {r['id']: r for r in records(catalog_path)} if catalog_path.is_file() else None
     check_manifest(rows, set(training), previous, catalog)
     if args.plan:
+        baseline = records(REVIEWED)
+        strict_counts = Counter(r['selection_role'] for r in baseline)
+        scheduled_or_reviewed = {r['task_index'] for r in rows + baseline}
+        archive = [r for r in records(ARCHIVE_REVIEW) if r['task_index'] not in scheduled_or_reviewed]
         print(json.dumps({'tasks': len(rows), 'trials': 4*len(rows), 'ranks': 8, 'desktops_per_rank': args.desktops_per_rank,
                           'scheduling': 'shared_queue', 'check_initial_state': True, 'targets': QUOTAS,
                           'purpose': dict(Counter(r['purpose'] for r in rows)),
+                          'gpu_candidates_by_role': dict(Counter(r['role'] for r in rows)),
+                          'archived_candidates_by_next_step': dict(Counter(r['next_step'] for r in archive)),
                           'reviewed_candidates': sum(bool(r.get('reviewed_skill')) for r in rows),
-                          'strict_at_start': dict(Counter(r['selection_role'] for r in records(REVIEWED)))}, indent=2))
+                          'strict_at_start': dict(strict_counts),
+                          'shortfall_at_start': {role: cap-strict_counts[role] for role, cap in QUOTAS.items()}}, indent=2))
         return
     job = os.environ.get('JOB_ID', '')
     rank = int(os.environ.get('RANK', '-1'))

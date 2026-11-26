@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from ais_screen_queue import (QUOTAS, ROOT, ROSTER, ScreenQueue, check_manifest, complete_task,
+from ais_screen_queue import (ARCHIVE_REVIEW, QUOTAS, REVIEWED, ROOT, ROSTER, ScreenQueue, check_manifest, complete_task,
                               earlier_jobs, eligible, previous_batches, records)
 from ais_vm_check import save
 from overnight_prompts import write_lines
@@ -131,6 +131,23 @@ class SharedQueueTest(unittest.TestCase):
         self.assertTrue(plan['check_initial_state'])
         self.assertGreaterEqual(plan['tasks'], 64)
         self.assertEqual(plan['trials'], plan['tasks'] * 4)
+        archive = records(ARCHIVE_REVIEW)
+        gpu_ids = {r['task_index'] for r in records(ROSTER)}
+        baseline_ids = {r['task_index'] for r in records(REVIEWED)}
+        archived_ids = {r['task_index'] for r in archive}
+        self.assertEqual(len(archived_ids), len(archive))
+        self.assertEqual(sum(plan['archived_candidates_by_next_step'].values()),
+                         len(archived_ids - gpu_ids - baseline_ids))
+        self.assertEqual(sum(plan['shortfall_at_start'].values()), sum(QUOTAS.values()) - len(baseline_ids))
+        for row in archive:
+            scores = row['raw_rewards']
+            self.assertEqual(len(scores), 4)
+            self.assertTrue(all(type(v) in (int, float) and 0 <= v <= 1 for v in scores))
+            expected_step = ('review_breadth' if row['role'] == 'breadth' else
+                             'check_solvability_before_resampling' if scores.count(1) == 0 else 'review_mixed')
+            self.assertEqual(row['next_step'], expected_step)
+            if expected_step == 'review_mixed':
+                self.assertLess(scores.count(1), len(scores))
         previous = previous_batches()
         for row in records(ROSTER):
             self.assertEqual(row['purpose'] == 'additional_four', row['task_index'] in previous)
