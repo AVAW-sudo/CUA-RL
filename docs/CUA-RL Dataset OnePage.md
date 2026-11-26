@@ -4,6 +4,10 @@
 
 ## 截至 11 月 26 日，256 道里已有多少能用
 
+**11 月 26 日夜间扩到了 637 道不同的官方候选。** 晚上第一批新增 35 道，第二批又新增 116 道。其中 100 道首次交给 GPU 试做（15 道主练候选、85 道分步候选），16 道有同协议的四次历史评分，可以直接复核。两批合计新增 151 道。对照官方发布版本逐题核验了文件哈希、题目指令和研究划分。637 道由原有的 61 道严核题、350 道 GPU 队列题、226 道只需本地复核的候选构成，每道只计一次。[官方数据版本](../configs/sources.lock.json) · [GPU 队列](../configs/dataset-screen/expand-queue.jsonl) · [历史候选](../configs/dataset-screen/expand-review.jsonl)
+
+**截至北京时间 23:25，已严核 87/256 道。** 作业 `23560412` 使用 8 张 A100 筛选。CPU 复核已挂起等待，达到配额或发完候选后，会等已领题的桌面写完结果，再逐题核验轨迹、得分和评分器。最终的 `prompts-reviewed.jsonl` 是能训练的题单，`review-decisions.jsonl` 留下本次逐题结论、指令和分数。按本次已准备好的评分器正反例和分类配额，自动复核最多能确认 **141 道**，其中主练最多 59、分步最多 64、广覆盖最多 18。要凑齐 256 道，还需要给更多主练和广覆盖题核验评分器。[复核入口](../AIS_ENTRY.txt) · [夜间评分对照](../configs/dataset-screen/night-review-controls.jsonl) · [对照重算脚本](../runs/dataset-screening/night-20261126/build_controls.py) · [复核状态及输出](../runs/ais-screen-expand/23560412/night-review)
+
 **11 月 26 日 22:59（北京时间）已严核 87/256 道，还差 169 道。** 主练题 27/128，分步题 52/64，广覆盖题 8/64。作业 `23560412` 的两个 GPU rank 已领取本轮新增的主练题，分别要求按会议和年份回填举办地所在洲、在本地学术主页模板中修改作者所在地。[作业实时计数](../runs/ais-screen-expand/23560412/progress.json) · [逐题名单](../runs/ais-screen-expand/23560412/prompts-reviewed.jsonl)
 
 本次从官方训练划分补入 **50 条不同的候选指令**，其中 9 条暂列主练、41 条暂列分步。28 条首次交给 GPU 各试四次；22 条已有四次评分，先在本地复核。另有一道已有候选要求在第二页应用 dissolve 切换效果，以前四次都没拿满分。这次在原始演示文件上验证了正确操作得 1，改错页或选错效果均得 0，已安排补跑四次。GPU 清单由 198 道增至 227 道。[GPU 清单](../configs/dataset-screen/expand-queue.jsonl) · [本地复核清单](../configs/dataset-screen/expand-review.jsonl) · [离线评分对照](../runs/dataset-screening/evening-expansion-20261126/controls.json)
