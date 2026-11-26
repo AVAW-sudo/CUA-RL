@@ -63,6 +63,10 @@ CUA-Lite 的结果说明为什么要检验留出表现。其 4B 模型在 Lite.S
 
 累计严核通过 46 道，含 6 道主练、39 道分步和 1 道广覆盖。主练覆盖 3 个原题家族。新增的整列单位换算保留了 SFT 在原题未完成的换算、舍入和写回操作，与之前的双列换算题同源。此清单按冻结题单的原有配额计数，AIS 作业的滚动导出另行统计。[冻结严核题单](../configs/dataset-screen/strict-reviewed-20261126.jsonl) · [150 道逐题状态（共享工作区）](../runs/dataset-screening/mixed-review-20261126/mixed-150.jsonl)
 
+11 月 26 日上午用现成的四次成绩复查了 108 道混合难度题，含冻结集剩余的 81 道和快照中冻结集外的 27 道。逐题读指令后，97 道以排版、软件设置等其他技能为主。剩下 11 道检查官方判分，9 道会给关键错例满分。例如列车记录去重题接受八条编造的记录，两道幻灯片汇总题接受空白汇总页。另 2 道只需写入题面给定的表头或占位值。本批新增主练 0 道。[108 道逐题去向和对照分数（共享工作区）](../runs/dataset-screening/screen-next-20261126/local-review.jsonl)
+
+下一单 `bash AIS_ENTRY.txt screen-next` 只试跑 8 道新 Calc 变体，涉及查表、日期提取和销售计算等操作。5 个原题家族的原题 SFT 均满分，本批用于测相邻变体自身难度。8 道均通过离线初态、正确产物和错例检查。每个 rank 一题，先做桌面初态检查，再给初态零分的题各采 4 次。[冻结名单](../configs/dataset-screen/expansion-20261126.json) · [本轮判分记录（共享工作区）](../runs/dataset-screening/screen-next-20261126/controls.json) · [首批两道判分记录（共享工作区）](../runs/dataset-screening/expand-check-20261126-RtcU6sTT/report.json)
+
 ## 实验与验收
 
 **数据收益**用同一 SFT、原版 GRPO + Frontier 和交互预算，对比「按应用分层抽取 256 题」与「定向筛选 256 题」。**算法收益**在同一定向题单上比较原版 GRPO、时间加权消融和 Gamer TA-GRPO。首轮每步 **16 个 prompt × 8 个 rollout，25 次更新机会**。PPO 可沿用划分并单记 critic 开销。[GRPO 配置](../configs/qwen3vl-osworld-original-pilot-8gpu.yaml) · [Gamer 方法 §4](https://arxiv.org/html/2611.18397v1#S4)

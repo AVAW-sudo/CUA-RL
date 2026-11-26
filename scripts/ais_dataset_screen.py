@@ -172,10 +172,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--indices', type=Path, help='Override the default consecutive screening batches')
     parser.add_argument('--overnight', action='store_true', help='Run the frozen overnight queue and export the prompt set')
+    parser.add_argument('--check-initial-state', action='store_true',
+                        help='Require a zero-reward untouched desktop before sampling each candidate')
     parser.add_argument('--plan', action='store_true', help='Print the eight shards without starting services')
     parser.add_argument('--reuse-from', metavar='JOB_ID', help='Reuse verified scored slots from this screening job')
     parser.add_argument('--desktops-per-rank', type=int, choices=range(1, 9), default=2)
     args = parser.parse_args()
+    check_initial_state = args.overnight or args.check_initial_state
     if args.overnight:
         from overnight_prompts import MANIFEST, export, publish_latest
         if args.indices:
@@ -188,6 +191,7 @@ def main():
                         for n, task in enumerate(shard))
         candidates = [task for _, task in roster]
     if args.plan:
+        batch['check_initial_state'] = check_initial_state
         print(json.dumps(batch, indent=2))
         return
     rank = int(os.environ['RANK'])
@@ -216,7 +220,7 @@ def main():
             'policy': Path(os.getenv('CUA_POLICY_MANIFEST', cache / 'ais-frontier-vllm/manifest.json')),
             'fixtures': cache / 'ais-sft-osworld-inputs/manifest.json'}.items()}
         runtime['model_revision'] = read(ROOT / 'configs/sources.lock.json')['sft_model']['revision']
-        if args.overnight:
+        if check_initial_state:
             runtime['initial_state_check'] = 'untouched-done-v1'
         cohort = dict(runtime, batch_sha256=batch['batch_sha256'], rank=rank, tasks=tasks)
         save(out / 'cohort.json', cohort)
@@ -241,11 +245,11 @@ def main():
             reporter.start()
         if status['reused_slots'] < 4 * len(tasks):
             run_collector(out, indices, set(tasks), status, False, reused_protocol, screen_lanes=args.desktops_per_rank,
-                          check_initial_state=args.overnight)
+                          check_initial_state=check_initial_state)
             require_equivalent_protocol(read(out / 'episodes/protocol.json'), protocol)
         elif tasks:
             save(out / 'episodes/protocol.json', read(reused_protocol))
-        result = summarize(coverage(out, tasks, protocol, overnight=args.overnight))
+        result = summarize(coverage(out, tasks, protocol, overnight=check_initial_state))
         save(out / 'coverage.json', result)
         status.update(status='shard_complete', scored=result['scored'], unscored=result['unscored'])
     except BaseException as exc:

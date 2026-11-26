@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -10,6 +11,19 @@ from overnight_prompts import export
 
 
 class DatasetScreenTest(unittest.TestCase):
+    def test_expansion_entry_checks_untouched_state_on_eight_new_tasks(self):
+        result = subprocess.run(['bash', str(ROOT / 'AIS_ENTRY.txt'), 'screen-next', '--plan'],
+                                capture_output=True, text=True, check=True)
+        batch = json.loads(result.stdout)
+        self.assertTrue(batch['check_initial_state'])
+        self.assertEqual([len(shard) for shard in batch['shards']], [1] * 8)
+        self.assertEqual(batch['trials'], 32)
+        old = set(json.loads(MANIFEST.read_text()))
+        old.update(json.loads((ROOT / 'configs/original-pilot/train-indices.json').read_text()))
+        for previous in DEFAULT_BATCHES:
+            old.update(json.loads(previous.read_text()))
+        self.assertTrue(all(shard[0] not in old for shard in batch['shards']))
+
     def test_overnight_pool_is_larger_than_target_and_rejects_nonzero_controls(self):
         candidates = json.loads(MANIFEST.read_text())
         self.assertGreater(len(candidates), 256)
