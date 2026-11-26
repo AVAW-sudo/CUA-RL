@@ -1,6 +1,6 @@
 """Run the frozen Frontier collector alongside a private SFT server and one desktop worker."""
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import os
@@ -47,7 +47,8 @@ def check_services(policy, desktop, out):
         raise RuntimeError(f'{message}. See {out / logs[-1]}')
 
 
-def run_collector(out, indices, expected, status, probe, reused_protocol, *, screen_lanes=None, check_initial_state=False):
+@contextmanager
+def collector_services(out, indices, expected, status, screen_lanes):
     base = ROOT.parent.parent
     binding = []
     with ExitStack() as sockets:
@@ -64,10 +65,10 @@ def run_collector(out, indices, expected, status, probe, reused_protocol, *, scr
     status['controller'] = controller
     save(out / 'status.json', status)
     with ExitStack() as stack:
-        def launch(name, cmd, env):
-            log = stack.enter_context((out / (name + '.log')).open('wb'))
-            child = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-            stack.callback(stop, child, 70)
+        def launch(name, cmd, env, directory=out, owner=stack):
+            with (directory / (name + '.log')).open('wb') as log:
+                child = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            owner.callback(stop, child, 70)
             return child
         policy_command = [sys.executable, '-u', str(ROOT / 'scripts/ais_frontier_server.py'),
                           '--state-dir', str(service_dir), '--port', policy_port]
@@ -100,34 +101,44 @@ def run_collector(out, indices, expected, status, probe, reused_protocol, *, scr
             raise TimeoutError('Frontier worker and policy were not ready within one hour')
         status['status'] = 'collecting'
         save(out / 'status.json', status)
-        command = cpu + [str(ROOT / 'scripts/collect_frontier_rates.py'), '--task-name', 'osworld-pilot',
-                         '--indices', str(indices), '--primary-service', str(service_state), '--service-pool', str(pool),
-                         '--controller', controller, '--output', str(out / 'episodes'),
-                         '--concurrency', str(screen_lanes or 1),
-                         '--rates-output', str(out / 'rates.json')]
-        if (screen_lanes or 1) == 1:
-            command += ['--private-worker', f'http://127.0.0.1:{worker_port}/api']
-        if screen_lanes:
-            command.append('--screening')
-        if check_initial_state:
-            command.append('--check-initial-state')
-        if reused_protocol:
-            command += ['--reused-protocol', str(reused_protocol)]
-        if probe:
-            command += ['--probe-one', TASK]
-        collector = launch('collector', command, cpu_env)
-        next_report = 0
-        while collector.poll() is None:
-            check_services(policy, desktop, out)
-            if screen_lanes and time.monotonic() >= next_report:
-                scored = sum(1 for _ in (out / 'episodes').glob('*/*/result.json'))
-                status.update(scored=scored, trials=4 * len(expected))
-                save(out / 'status.json', status)
-                print(f"Screening rank {status['rank']} | {scored}/{status['trials']} terminal scores", flush=True)
-                next_report = time.monotonic() + 60
-            time.sleep(3)
-        if collector.returncode:
-            raise RuntimeError(f'Collector exited with {collector.returncode}; see collector.log and episode attempts')
+
+        def collect(destination, indices, probe=False, reused_protocol=None, check_initial_state=False):
+            command = cpu + [str(ROOT / 'scripts/collect_frontier_rates.py'), '--task-name', 'osworld-pilot',
+                             '--indices', str(indices), '--primary-service', str(service_state), '--service-pool', str(pool),
+                             '--controller', controller, '--output', str(destination / 'episodes'),
+                             '--concurrency', str(screen_lanes or 1),
+                             '--rates-output', str(destination / 'rates.json')]
+            if (screen_lanes or 1) == 1:
+                command += ['--private-worker', f'http://127.0.0.1:{worker_port}/api']
+            if screen_lanes:
+                command.append('--screening')
+            if check_initial_state:
+                command.append('--check-initial-state')
+            if reused_protocol:
+                command += ['--reused-protocol', str(reused_protocol)]
+            if probe:
+                command += ['--probe-one', TASK]
+            with ExitStack() as attempt:
+                collector = launch('collector', command, cpu_env, directory=destination, owner=attempt)
+                next_report = 0
+                while collector.poll() is None:
+                    check_services(policy, desktop, out)
+                    if screen_lanes and time.monotonic() >= next_report:
+                        scored = sum(1 for _ in (destination / 'episodes').glob('*/*/result.json'))
+                        status.update(scored=scored, trials=4 * len(read(indices)))
+                        save(out / 'status.json', status)
+                        print(f"Screening rank {status['rank']} | {scored}/{status['trials']} terminal scores", flush=True)
+                        next_report = time.monotonic() + 60
+                    time.sleep(1)
+                if collector.returncode:
+                    raise RuntimeError(f'Collector exited with {collector.returncode}; see collector.log and episode attempts')
+
+        yield collect
+
+
+def run_collector(out, indices, expected, status, probe, reused_protocol, *, screen_lanes=None, check_initial_state=False):
+    with collector_services(out, indices, expected, status, screen_lanes) as collect:
+        collect(out, indices, probe, reused_protocol, check_initial_state)
 
 
 def wait_for_shards(directory):

@@ -12,10 +12,7 @@ from overnight_prompts import export
 
 class DatasetScreenTest(unittest.TestCase):
     def test_targeted_queue_separates_new_tasks_from_extra_trials(self):
-        result = subprocess.run(['bash', str(ROOT / 'AIS_ENTRY.txt'), 'screen-expand', '--plan'],
-                                capture_output=True, text=True, check=True)
-        batch = json.loads(result.stdout)
-        self.assertTrue(batch['check_initial_state'])
+        batch = plan(MANIFEST.parent / 'targeted-20261126.json', 2)
         self.assertEqual((batch['ranks'], batch['desktops_per_rank'], batch['trials']), (8, 2, 32))
         evidence = MANIFEST.parent / 'targeted-20261126-review.jsonl'
         rows = [json.loads(line) for line in evidence.read_text().splitlines()]
@@ -143,6 +140,7 @@ class DatasetScreenTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 restore(old, new, tasks, dict(current, temperature=99), cohort)
             self.assertEqual(restore(old, new, tasks, current, cohort), 1)
+            self.assertEqual(restore(old, new, tasks, current, cohort, merge_existing=True), 0)
             result = summarize(coverage(new, ['fixture'], protocol))
             self.assertEqual(result['scored'], 1)
             self.assertEqual(result['unscored'], 3)

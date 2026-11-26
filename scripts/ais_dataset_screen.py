@@ -99,7 +99,7 @@ def coverage(out, tasks, protocol, *, overnight=False):
     return rows
 
 
-def restore(source, out, tasks, protocol, cohort):
+def restore(source, out, tasks, protocol, cohort, *, merge_existing=False):
     # Only completed slots are reusable. Failed trials retain their original evidence under the source job.
     if not source.is_dir() or not (source / 'episodes/protocol.json').exists():
         if any((source / 'episodes').glob('*/*/attempt-*.json')):
@@ -130,13 +130,22 @@ def restore(source, out, tasks, protocol, cohort):
                 raise ValueError(f'Unexpected scores under a rejected initial state for {task}')
             dest = out / 'episodes' / task
             dest.mkdir(parents=True, exist_ok=True)
-            save(dest / 'initial-state.json', control)
+            gate = dest / 'initial-state.json'
+            if merge_existing and gate.is_file():
+                existing = read(gate)
+                validate_control(existing, task)
+                if existing['status'] != control['status']:
+                    raise ValueError(f'Conflicting initial-state verdicts for {task}')
+            else:
+                save(gate, control)
         for trial in range(1, 5):
             old = source / 'episodes' / task / str(trial)
             if not (old / 'result.json').is_file():
                 continue
             checked_score(old, task, trial, previous_protocol)
             new = out / 'episodes' / task / str(trial)
+            if merge_existing and (new / 'result.json').is_file():
+                continue
             new.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(old, new)
             checked_score(new, task, trial, protocol)
