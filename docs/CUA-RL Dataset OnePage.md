@@ -4,7 +4,9 @@
 
 ## 截至 11 月 26 日，256 道里已有多少能用
 
-**作业 23560412 起跑时有 61/256 道达标（23.8%），当时还差 195 道。** 主练题保留原题失分的关键操作，现有 **8/128**，来自 5 个原始任务。分步题单练其中一个环节，现有 **45/64**。广覆盖题是预先抽取的其他桌面操作，现有 **8/64**。本次复用了 5 道广覆盖题的四次历史评分，在 CPU 上核对了封存记录和评分器对照。剩余 56 道广覆盖候选也都有四次评分，先在 CPU 上复核。[累计逐题名单](../configs/dataset-screen/strict-expanded-20261126.jsonl) · [广覆盖待核名单](../runs/dataset-screening/shared-queue-20261126/breadth-review.jsonl)
+**11 月 26 日 18:34（北京时间）已严核 69/256 道，还差 187 道。** 主练题 15/128，分步题 46/64，广覆盖题 8/64。当时作业 `23560412` 仍在运行。[作业实时计数（共享工作区）](../runs/ais-screen-expand/23560412/progress.json)
+
+作业启动时有 61/256 道达标（23.8%）。其中 8 道主练题来自 5 个原始任务，保留了原题失分的关键操作。45 道分步题各练其中一个环节，8 道广覆盖题取自预先抽取的其他桌面操作。本次复用了 5 道广覆盖题的四次历史评分，在 CPU 上核对了封存记录和评分器对照。剩余 56 道广覆盖候选也都有四次评分，先在 CPU 上复核。[累计逐题名单](../configs/dataset-screen/strict-expanded-20261126.jsonl) · [广覆盖待核名单](../runs/dataset-screening/shared-queue-20261126/breadth-review.jsonl)
 
 本轮最先新增的主练题要求把两个源目录的完整层级备份到指定位置。未操作时为零分，四次试做得 1、1、0、0。评分对照中，丢掉一层目录或备份到错误位置都得零分。它入选时累计达到 **62/256**。后续实时进度见作业汇总。[实时进度](../runs/ais-screen-expand/23560412/progress.json) · [逐题名单](../runs/ais-screen-expand/23560412/prompts-reviewed.jsonl)
 
@@ -16,7 +18,9 @@
 
 ## 我们的 SFT 弱在哪里
 
-官方 OSWorld 361 题中，358 题有分，平均 **44.32%**，含部分得分。计入 3 道未评分题后，361 题均分的上下界为 **43.96%–44.79%**。为避免用测试成绩选训练题，弱项诊断只看其中与 **RL 训练划分**对应的 295 个原始任务。下表是本地 SFT 实测。[SFT 审计记录（共享工作区）](../runs/ais-sft-evaluations/23495234/full/summary.json) · [划分依据](../configs/research-splits/manifest.json)
+本轮 RL 使用 ScaleCUA Qwen3-VL-8B 的 OSWorld SFT 权重。OSWorld 的 361 道题中，358 道有有效分数，**均分 44.32%，满分率 43.02%**。其中 154 道满分、5 道部分得分、199 道零分。其余 3 道分别遇到截图、桌面输入和环境初始化故障。将缺分分别按 0 或 1 计，361 题的均分范围是 **43.96%–44.79%**。同次评测也测了独立的 ScienceBoard SFT 权重，发布环境中 146/169 道有分，均分 16.24%。恢复原题初始状态后 148/169 道有分，均分 16.06%。两项均分各按本配置已评分题计算。[AIS 作业 23495234 的逐题记录（共享工作区）](../runs/ais-sft-evaluations/23495234/full/summary.json)
+
+整套 OSWorld 的跨应用题中，92/93 道有分，均分 **16.30%**。为避免用留出题成绩筛选训练数据，下面只统计 RL 训练划分中的 295 道原题，其中 77 道跨应用题均有分，均分 **10.39%**。[研究划分](../configs/research-splits/manifest.json)
 
 | 训练侧原题 | 已评分 / 原题 | 已评分均分 | 零分题 | 零分且记录 ≥50 个动作 |
 |---|---:|---:|---:|---:|
@@ -123,6 +127,12 @@ CUA-Lite 的结果说明为什么要检验留出表现。其 4B 模型在 Lite.S
 
 **数据收益**用同一 SFT、原版 GRPO + Frontier 和交互预算，对比「按应用分层抽取 256 题」与「定向筛选 256 题」。**算法收益**在同一定向题单上比较原版 GRPO、时间加权消融和 Gamer TA-GRPO。首轮每步 **16 个 prompt × 8 个 rollout，25 次更新机会**。PPO 可沿用划分并单记 critic 开销。[GRPO 配置](../configs/qwen3vl-osworld-original-pilot-8gpu.yaml) · [Gamer 方法 §4](https://arxiv.org/html/2611.18397v1#S4)
 
+**先检查长轨迹能否分组比较。** 筛选作业 `23533722` 的 426 道题中，394 道取得了四次有效终局评分。按原始得分计算，176 道在四次尝试间出现分差。若只看超过 20 次模型调用的尝试，253 道题还有至少两条轨迹可比较，其中 110 道的最终得分有差异。超过 30 次调用后分别只剩 197 道和 83 道。较早完成的轨迹已退出后段。正式训练需另记每个阶段的到达数，以及**当前阶段**出现可验证分差的题数。[终局评分汇总](../runs/ais-dataset-screen/23533722/summary.json) · [各 rank 的逐次调用记录（共享工作区）](../runs/ais-dataset-screen/23533722/)
+
+**TA-GRPO 的对照。** Gamer 用记忆摘要连接长轨迹，按同一任务的第几次记忆压缩分组。桌面上同一段号可能对应不同进度，例如有的尝试已开始填表，有的还在找文件。先选能只读核验中途产物的题。固定分段、摘要、阶段奖励和每个动作的损失计算方式，在完全相同的设置下对比段内等权与靠近段末的动作获得更高权重。这样可以单独衡量时间加权的贡献。STEP 在 OSWorld 上同时调整选题和步骤更新，把 UI-TARS-DPO-7B 从轨迹级 GRPO 的 18.9 提升到 23.8，比较时应固定我们的 Frontier 采样规则。[Gamer §4](https://arxiv.org/html/2611.18397v1#S4) · [STEP 实验与消融](https://aclanthology.org/2026.findings-acl.1532.pdf)
+
+**PPO 的对照。** 先试 Turn-PPO，把一次 GUI 操作当作一个时间步。它的价值模型（critic）估计从当前截图和历史继续操作，预计最终能得多少分。首轮沿用相同终局评分，单独核算价值模型的显存、训练时间和真实桌面操作数。GUI-Shepherd 在 AndroidWorld 上的同模型对照中，ARPO/GRPO 和只用结果奖励的 PPO 都是 37.0%，加入单步评分模型后 PPO 达到 40.5%。若同时换算法和奖励，涨分来源就难以判断。工程上可参照 NeMo 的多模态 PPO、verl 的价值模型更新和 ROLL 的多环境调度。[Turn-PPO](https://aclanthology.org/2026.findings-eacl.328/) · [GUI-Shepherd](https://arxiv.org/html/2509.23738v1#S4) · [NeMo RL](https://docs.nvidia.com/nemo/rl/nightly/guides/ppo.html) · [verl](https://verl.readthedocs.io/en/latest/algo/ppo.html) · [ROLL](https://alibaba.github.io/ROLL/docs/Development/Architecture/AgenticPipeline/)
+
 **24 个桌面的正式 RL 预算。** 8 张 A100、每卡所在的进程开 3 个桌面，单方法、单个随机种子的 25 步先预留 **30–40 小时**。16 桌面的 RL 试跑累计取得约 91–113 条有效评分轨迹/小时。24 桌面若完全线性提速，名义 3,200 条约需 19–24 小时纯采样。若吞吐只提高 25%–35%，约需 21–29 小时纯采样。预算另外为首步多采、启动、梯度更新和存盘留出时间。试跑在第一次完整更新前结束，这个预算尚无 24 路端到端实测，排队、筛题和最终评测另计。每个进程开 4 个桌面可做 32 路对照。单进程实测从 2 个加到 4 个时，截图延迟的第 95 百分位从 4.29 秒升到 4.71 秒，也开始遇到 CPU 限速。比较时应看每小时成功评分的轨迹数。[16 桌面 RL 配置](../runs/ais/original-grpo-pilot-vw46xwnd/training.yaml) · [桌面并发实测](../runs/ais-desktop-validation/20261125-15904ca/summary.json)
 
 **验收**用 dev 181 题选 checkpoint，冻结后在 test 177 题同时报整体均分和预先标记的弱项子集均分，按 32 个原始 UUID 做配对比较并报告区间。官方 OSWorld 361 单独报分、评分覆盖率及与训练原题的重叠数。295 个候选训练 UUID 都出现在官方 361 中，公开 SFT 的逐题暴露情况未知。[研究划分](../configs/research-splits/manifest.json) · [官方评测清单](https://github.com/THUDM/SCALE-CUA/blob/3929e2fe364623153f2caa94ead71dc1aea50fb0/osworld_eval/evaluation_examples/test_nogdrive.json)
@@ -147,6 +157,6 @@ CUA-Lite 的结果说明为什么要检验留出表现。其 4B 模型在 Lite.S
 | **DART-GUI、MobileRL** · 桌面／移动 | DART 按难度调整 rollout 数和轨迹长度，为难题预采成功示例。MobileRL 在移动端采用难度自适应正例回放和失败课程筛选。 | 区分“没有可靠判分”“当前很难成功”和“已有成功但很稀少”。追加采样、回放或长度奖励应作为单独实验。[DART-GUI](https://github.com/Computer-use-agents/dart-gui) · [DART 论文](https://arxiv.org/abs/2509.23866) · [MobileRL](https://github.com/THUDM/MobileRL) |
 | **WebAgent-R1、DigiRL** · 网页／移动 | WebAgent-R1 用 647 题做 RL、165 道人工验证题做评测。DigiRL 提供基于奖励过滤的行为克隆对照。 | 将人工核验优先给独立评测题。若引入成功轨迹回放，可用成功轨迹行为克隆检查收益来源。[WebAgent-R1](https://github.com/weizhepei/WebAgent-R1) · [论文 §3.2](https://arxiv.org/html/2505.16421v1#S3.SS2) · [DigiRL](https://github.com/DigiRL-agent/digirl) |
 | **OSWorld、OSWorld 2.0** · 评测质量 | OSWorld-Verified 修订了基准问题。2.0 仓库提供手工执行单题、检查判分和记录轨迹的工具。 | 固定本轮镜像及判分版本。争议题保留人工操作、最终文件和判分记录，以便复核。[OSWorld](https://github.com/xlang-ai/OSWorld) · [2.0 单题检查工具](https://github.com/xlang-ai/OSWorld-V2/blob/main/scripts/python/manual_examine.py) |
-| **Gamer** · 游戏长程交互 | TA-GRPO 通过记忆压缩连接各段，在同一任务、同一阶段内比较到达该阶段的轨迹，并用环境可验证结果分配优势。 | 先在同一批轨迹上验证 β=1 时的损失和梯度与原版 GRPO 一致。对有可靠阶段判分的任务，记录每阶段到达数和奖励差异，再评估完整适配。[仓库](https://github.com/RainBowLuoCS/Gamer) · [论文 §4](https://arxiv.org/html/2611.18397v1#S4) |
+| **Gamer** · 游戏长程交互 | TA-GRPO 通过记忆压缩连接各段，在同一任务、同一段号内比较到达该段的轨迹，并用环境可验证结果分配优势。 | β=1 时段内动作等权。与原版 GRPO 对齐损失和梯度时，还需使用单段轨迹，并对齐奖励、组内优势归一化、掩码和损失归约。[仓库](https://github.com/RainBowLuoCS/Gamer) · [论文 §4](https://arxiv.org/html/2611.18397v1#S4) |
 
 </details>
