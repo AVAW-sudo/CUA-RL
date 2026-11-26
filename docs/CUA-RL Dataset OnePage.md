@@ -4,7 +4,11 @@
 
 ## 截至 11 月 26 日，256 道里已有多少能用
 
-**11 月 26 日 18:34（北京时间）已严核 69/256 道，还差 187 道。** 主练题 15/128，分步题 46/64，广覆盖题 8/64。当时作业 `23560412` 仍在运行。[作业实时计数（共享工作区）](../runs/ais-screen-expand/23560412/progress.json)
+**11 月 26 日 22:59（北京时间）已严核 87/256 道，还差 169 道。** 主练题 27/128，分步题 52/64，广覆盖题 8/64。作业 `23560412` 的两个 GPU rank 已领取本轮新增的主练题，分别要求按会议和年份回填举办地所在洲、在本地学术主页模板中修改作者所在地。[作业实时计数](../runs/ais-screen-expand/23560412/progress.json) · [逐题名单](../runs/ais-screen-expand/23560412/prompts-reviewed.jsonl)
+
+本次从官方训练划分补入 **50 条不同的候选指令**，其中 9 条暂列主练、41 条暂列分步。28 条首次交给 GPU 各试四次；22 条已有四次评分，先在本地复核。另有一道已有候选要求在第二页应用 dissolve 切换效果，以前四次都没拿满分。这次在原始演示文件上验证了正确操作得 1，改错页或选错效果均得 0，已安排补跑四次。GPU 清单由 198 道增至 227 道。[GPU 清单](../configs/dataset-screen/expand-queue.jsonl) · [本地复核清单](../configs/dataset-screen/expand-review.jsonl) · [离线评分对照](../runs/dataset-screening/evening-expansion-20261126/controls.json)
+
+主练题仍缺 101 道。会议题的评分器逐行读取原工作簿，21 行全部填对得 1，任意一行改错均得 20/21。新计入严核的那道 Chrome 题此前四次得 1、0.5、0.5、1。本地确认只关闭深色模式或只启用 Do Not Track 都只能得 0.5 后，沿用了这四次成绩。[逐行评分对照](../runs/dataset-screening/evening-expansion-20261126/controls.json) · [Chrome 题四次实测](../runs/ais-screen-expand/23560412/tasks/chrome_93eabf48-6a27-4cb6-b963-7d5fe1e0d3a9_traj_verify_3/outcome.json)
 
 作业启动时有 61/256 道达标（23.8%）。其中 8 道主练题来自 5 个原始任务，保留了原题失分的关键操作。45 道分步题各练其中一个环节，8 道广覆盖题取自预先抽取的其他桌面操作。本次复用了 5 道广覆盖题的四次历史评分，在 CPU 上核对了封存记录和评分器对照。剩余 56 道广覆盖候选也都有四次评分，先在 CPU 上复核。[累计逐题名单](../configs/dataset-screen/strict-expanded-20261126.jsonl) · [广覆盖待核名单](../runs/dataset-screening/shared-queue-20261126/breadth-review.jsonl)
 
