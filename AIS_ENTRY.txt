@@ -11,6 +11,8 @@
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-overnight
 # 下一批筛选：8 道已通过本地判分检查的新变体，每个 rank 一题，初态零分后各采 4 次。
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-next
+# 扩围筛选，16 道新的 Calc、Impress 和文件操作题，8 个单卡 rank 各筛两题。
+# bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-wide
 # RL 只提交一个作业。支持 8 个单卡 rank，或 1 个八卡实例。所有 rank 使用同一条 Entry。
 # 八个单卡 rank 各启动一个 Ray 节点，默认每个 worker 同时运行 2 个桌面，共 16 路。
 # 可在同一条命令前设置 CUA_RL_DESKTOPS_PER_RANK=4 做 32 路对照。每个 prompt 仍采样 8 次。
@@ -29,6 +31,9 @@ mode=${1:-check}
 if (( $# )); then shift; fi
 
 case "$mode" in
+    screen-wide)
+        exec python3 -u "$project/scripts/ais_dataset_screen.py" --indices "$project/configs/dataset-screen/wide-20261126.json" --check-initial-state "$@"
+        ;;
     screen-next)
         exec python3 -u "$project/scripts/ais_dataset_screen.py" --indices "$project/configs/dataset-screen/expansion-20261126.json" --check-initial-state "$@"
         ;;
@@ -64,7 +69,7 @@ case "$mode" in
         exec "$entry" train-check "$@"
         ;;
     *)
-        echo 'Usage: bash AIS_ENTRY.txt [sft|frontier|screen|screen-overnight|screen-next|rl-desktop|rl|check]' >&2
+        echo 'Usage: bash AIS_ENTRY.txt [sft|frontier|screen|screen-overnight|screen-next|screen-wide|rl-desktop|rl|check]' >&2
         exit 2
         ;;
 esac

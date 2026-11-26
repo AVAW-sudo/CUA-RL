@@ -67,6 +67,10 @@ CUA-Lite 的结果说明为什么要检验留出表现。其 4B 模型在 Lite.S
 
 下一单 `bash AIS_ENTRY.txt screen-next` 只试跑 8 道新 Calc 变体，涉及查表、日期提取和销售计算等操作。5 个原题家族的原题 SFT 均满分，本批用于测相邻变体自身难度。8 道均通过离线初态、正确产物和错例检查。每个 rank 一题，先做桌面初态检查，再给初态零分的题各采 4 次。[冻结名单](../configs/dataset-screen/expansion-20261126.json) · [本轮判分记录（共享工作区）](../runs/dataset-screening/screen-next-20261126/controls.json) · [首批两道判分记录（共享工作区）](../runs/dataset-screening/expand-check-20261126-RtcU6sTT/report.json)
 
+扩围作业 `bash AIS_ENTRY.txt screen-wide` 接在 `screen-next` 后，独立分片试跑 16 道新题，覆盖 11 个原题家族。其中 3 道 Calc 包括工时计税、按评分区间查等级和查负责人；7 道 Impress 覆盖从标题抄到备注、定位指定幻灯片写入标题或表格；6 道 OS 考文本变换和文件整理。工时计税、查等级、按目录层级备份这三道的原题 SFT 为零。其余 13 道用于测相邻技能的难度。已核对训练划分、历史题单及规范化题面，并剔除与留出题面或已知素材重合的候选。[冻结名单](../configs/dataset-screen/wide-20261126.json)
+
+16 道的离线初态均为零，正确产物均为满分，逐题构造的关键错例均扣分。例如双页插表只完成一页得 0.5，把表格放错页得 0。另两道插表题接受包含目标词的错误表头，已排除。八卡按每卡两题执行，先测真实桌面初态，初态零分后再各采四次。训练集收录仍依赖实际难度和技能复核。[逐题对照（共享工作区）](../runs/dataset-screening/wide-20261126/selected-controls.json)
+
 ## 实验与验收
 
 **数据收益**用同一 SFT、原版 GRPO + Frontier 和交互预算，对比「按应用分层抽取 256 题」与「定向筛选 256 题」。**算法收益**在同一定向题单上比较原版 GRPO、时间加权消融和 Gamer TA-GRPO。首轮每步 **16 个 prompt × 8 个 rollout，25 次更新机会**。PPO 可沿用划分并单记 critic 开销。[GRPO 配置](../configs/qwen3vl-osworld-original-pilot-8gpu.yaml) · [Gamer 方法 §4](https://arxiv.org/html/2611.18397v1#S4)

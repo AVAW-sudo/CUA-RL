@@ -11,6 +11,24 @@ from overnight_prompts import export
 
 
 class DatasetScreenTest(unittest.TestCase):
+    def test_wide_entry_screens_fresh_training_variants(self):
+        result = subprocess.run(['bash', str(ROOT / 'AIS_ENTRY.txt'), 'screen-wide', '--plan'],
+                                capture_output=True, text=True, check=True)
+        batch = json.loads(result.stdout)
+        self.assertTrue(batch['check_initial_state'])
+        self.assertEqual((batch['ranks'], batch['desktops_per_rank'], batch['trials']), (8, 2, 64))
+        self.assertEqual([len(shard) for shard in batch['shards']], [2] * 8)
+        tasks = {task for shard in batch['shards'] for task in shard}
+        self.assertEqual(len(tasks), 16)
+        for path in (*DEFAULT_BATCHES, MANIFEST, MANIFEST.parent / 'expansion-20261126.json',
+                     ROOT / 'configs/original-pilot/train-indices.json'):
+            self.assertTrue(tasks.isdisjoint(json.loads(path.read_text())), path)
+        families = {task.rsplit('_traj_verify_', 1)[0].rsplit('_', 1)[-1] for task in tasks}
+        self.assertEqual(len(families), 11)
+        splits = json.loads((ROOT / 'configs/research-splits/manifest.json').read_text())['splits']
+        for split in ('dev', 'test'):
+            self.assertTrue(families.isdisjoint(splits[split]['base_ids']))
+
     def test_expansion_entry_checks_untouched_state_on_eight_new_tasks(self):
         result = subprocess.run(['bash', str(ROOT / 'AIS_ENTRY.txt'), 'screen-next', '--plan'],
                                 capture_output=True, text=True, check=True)
