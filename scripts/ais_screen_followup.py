@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
+import tempfile
 from types import SimpleNamespace
 
 from ais_dataset_screen import coverage, expected_protocol
@@ -22,7 +23,6 @@ from overnight_prompts import write_lines
 
 BUNDLE = CONFIG / 'followup'
 RUN_ROOT = ROOT / 'runs/ais-screen-followup'
-GPU_LIMIT = 48
 
 
 def verified_json(path, checksum):
@@ -56,14 +56,19 @@ def score_cases(worker, case, evaluator):
         get_state = judge_function(worker / case['getter_module'], case['getter_sha256'],
                                    'get_' + evaluator['result']['type'])
     scores = {}
-    with redirect_stdout(io.StringIO()):
+    with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         for label, state in case['inputs'].items():
             if get_state is not None:
                 files = {case['path']: state.encode()}
                 desktop = SimpleNamespace(controller=SimpleNamespace(get_file=files.get))
                 state = get_state(desktop, evaluator['result'])
+            elif case.get('input_format') == 'text_file':
+                path = Path(tmp) / 'settings'
+                path.write_text(state)
+                state = str(path)
             scores[label] = score(state, evaluator['expected']['rules'], **evaluator.get('options', {}))
     return scores
+
 
 def prepare(out, worker=None):
     manifest = read(BUNDLE / 'manifest.json')
@@ -84,6 +89,7 @@ def prepare(out, worker=None):
     known = {r['task_index'] for r in baseline + source if r.get('kind') != 'new'}
     known.update(r['task_index'] for name in ('expand-queue', 'expand-review') for r in records(CONFIG / (name + '.jsonl')))
     seen_ids, seen_prompts, accepted, queue, decisions = set(), set(), [], [], []
+    queued_prompts = set()
     counts = Counter()
 
     def official(r):
@@ -124,7 +130,11 @@ def prepare(out, worker=None):
         if role == 'main' and (r['seed_score'] is None or r['seed_score'] >= 1):
             verdict = 'no_measured_seed_weakness'
         if not verdict:
-            if not skill or not controls_pass(scores):
+            pending_review = r.get('awaiting_review') is True
+            if pending_review:
+                if kind != 'new' or role != 'breadth' or skill or scores:
+                    raise ValueError(f'Invalid unreviewed candidate: {i}')
+            elif not skill or not controls_pass(scores):
                 raise ValueError(f'Missing judge controls for {i}')
             row = dict(task_index=i, prompt=prompt, role=role, reviewed_skill=skill,
                        offline_controls=scores, base_id=task['id'], app=domains[i], seed_score=r['seed_score'])
@@ -153,22 +163,29 @@ def prepare(out, worker=None):
                     row.update(purpose='additional_four', prior_job=manifest['source_job'], prior_raw_rewards=raw)
                 else:
                     row['purpose'] = 'first_four'
+                if r.get('reserve'):
+                    row['reserve'] = True
                 verdict = 'gpu_queue'
-                if normalized(prompt) in seen_prompts or counts[role] >= QUOTAS[role]:
+                key = normalized(prompt)
+                if key in seen_prompts or key in queued_prompts or counts[role] >= QUOTAS[role]:
                     verdict = 'quota_or_duplicate'
-                elif len(queue) >= GPU_LIMIT:
-                    verdict = 'gpu_limit'
                 else:
+                    queued_prompts.add(key)
                     queue.append(row)
         decisions.append(dict(task_index=i, kind=kind, decision=verdict, controls=scores))
+    # Reuse earlier partials first, then screen reviewed weak-seed tasks before the reserves.
+    queue.sort(key=lambda r: (r['purpose'] != 'additional_four', bool(r.get('reserve')), not r['reviewed_skill']))
     check_manifest(queue, set(domains), known)
     write_lines(out / 'roster.jsonl', queue)
     write_lines(out / 'baseline.jsonl', accepted)
     write_lines(out / 'cpu-decisions.jsonl', decisions)
     summary = dict(inputs=dict(Counter(r['kind'] for r in source)), strict_before=len(baseline),
                    strict_after_cpu=len(accepted), by_role=dict(counts),
-                   decisions=dict(Counter(r['decision'] for r in decisions)), gpu_limit=GPU_LIMIT,
+                   decisions=dict(Counter(r['decision'] for r in decisions)),
                    gpu_tasks=len(queue), gpu_purpose=dict(Counter(r['purpose'] for r in queue)),
+                   gpu_by_role=dict(Counter(r['role'] for r in queue)),
+                   gpu_reserve=sum(bool(r.get('reserve')) for r in queue),
+                   gpu_with_controls=sum(bool(r['reviewed_skill']) for r in queue),
                    max_new_trials=4*len(queue), ranks=8)
     save(out / 'cpu-summary.json', summary)
     return summary, queue, accepted
@@ -176,6 +193,7 @@ def prepare(out, worker=None):
 
 def finish(queue):
     # Re-read the new traces after the eight collectors have closed, before exporting training IDs.
+    awaiting_review = []
     for i, result in queue.done.items():
         folder = queue.tasks / i
         protocol = expected_protocol(folder / 'indices.json')
@@ -183,6 +201,12 @@ def finish(queue):
         audited = coverage(folder, [i], protocol, overnight=True)[i]
         if any(audited[k] != result[k] for k in ('raw_rewards', 'initial_state', 'unscored')):
             raise ValueError(f'Final CPU review differs from collected trials: {i}')
+        row = result['candidate']
+        if (not row.get('reviewed_skill') and audited['initial_state']['status'] == 'passed'
+                and not audited['unscored']):
+            awaiting_review.append(dict(task_index=i, prompt=row['prompt'], role=row['role'],
+                                        raw_rewards=audited['raw_rewards'], source=str(folder)))
+    write_lines(queue.directory / 'scored-for-review.jsonl', sorted(awaiting_review, key=lambda r: r['task_index']))
     summary = queue.publish(final=True, export_indices=True)
     if summary is None:
         raise ValueError('Follow-up queue changed during final review')

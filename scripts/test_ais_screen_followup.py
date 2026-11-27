@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import ais_screen_followup as screen
-from ais_screen_queue import ScreenQueue
+from ais_screen_queue import ScreenQueue, eligible
 from ais_vm_check import save
 from overnight_prompts import write_lines
 
@@ -25,11 +25,13 @@ class FollowupTest(unittest.TestCase):
             out = root / 'job'
             out.mkdir()
             rows = []
-            for kind in ('new', 'scored', 'partial'):
-                task = {'instruction': kind, 'id': kind, 'evaluator': {'func': 'metric', 'expected': {'rules': {}}}}
-                path = tasks / (kind + '.json')
+            for name in ('new', 'scored', 'partial', 'unreviewed', 'reserve', 'duplicate', 'rejected'):
+                kind = name if name in ('scored', 'partial') else 'new'
+                prompt = 'unreviewed' if name == 'duplicate' else name
+                task = {'instruction': prompt, 'id': name, 'evaluator': {'func': 'metric', 'expected': {'rules': {}}}}
+                path = tasks / (name + '.json')
                 save(path, task)
-                i = 'app_' + kind
+                i = 'app_' + name
                 row = dict(kind=kind, task_index=i, sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                            role='main', seed_score=0, reviewed_skill='Change the setting',
                            offline_controls={'untouched': 0, 'correct': 1, 'wrong_setting': 0})
@@ -38,6 +40,12 @@ class FollowupTest(unittest.TestCase):
                                raw_rewards=[0, 0.5, 0, int(kind == 'scored')],
                                receipt={'gate': dict(status='passed', reward=0, task_index=i, session_id='2'),
                                         'results': [str(n) for n in range(4)]})
+                if name in ('unreviewed', 'reserve', 'duplicate'):
+                    row.pop('reviewed_skill')
+                    row.pop('offline_controls')
+                    row.update(role='breadth', awaiting_review=True, reserve=name == 'reserve')
+                if name == 'rejected':
+                    row['hold'] = 'prior_review_rejected'
                 rows.append(row)
             save(split / 'train-examples.json', {'app': [r['task_index'] for r in rows]})
             for name in ('dev', 'test'):
@@ -52,8 +60,11 @@ class FollowupTest(unittest.TestCase):
             with (patch.object(screen, 'ROOT', root), patch.object(screen, 'CONFIG', bundle.parent),
                   patch.object(screen, 'BUNDLE', bundle)):
                 summary, queue, baseline = screen.prepare(out, worker)
-                self.assertEqual((summary['strict_after_cpu'], summary['max_new_trials']), (1, 8))
-                self.assertEqual([r['purpose'] for r in queue], ['first_four', 'additional_four'])
+                self.assertEqual((summary['strict_after_cpu'], summary['max_new_trials']), (1, 16))
+                self.assertEqual([r['task_index'] for r in queue],
+                                 ['app_partial', 'app_new', 'app_unreviewed', 'app_reserve'])
+                self.assertEqual(summary['gpu_with_controls'], 2)
+                self.assertFalse(eligible(queue[-1], {'raw_rewards': [0, 1, 1, 0], 'initial_state': {'status': 'passed'}}))
                 self.assertEqual([r['task_index'] for r in baseline], ['app_scored'])
                 save(tasks / 'new.json', {'instruction': 'different'})
                 with self.assertRaisesRegex(ValueError, 'Checksum mismatch'):
