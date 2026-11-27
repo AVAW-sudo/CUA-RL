@@ -7,6 +7,7 @@ import importlib.util
 import json
 import math
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -15,6 +16,26 @@ from ais_frontier_shards import write_shard_rates
 from build_initial_rates import TERMINAL_AGENT_STATES
 from inference_pool import load_services
 from run_benchmark import ROOT, write_json
+
+
+def load_image_filter(source):
+    agent = source / 'scalecua_rl/scripts/server_agent.py'
+    if agent.is_file():
+        spec = importlib.util.spec_from_file_location('original_server_agent', agent)
+        upstream = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(upstream)
+    else:
+        # The AIS worker archive includes the same upstream filter in the OSWorld adapter.
+        evaluator = source / 'osworld_eval'
+        adapter = evaluator / 'mm_agents/scalecua-osworld/main.py'
+        if not adapter.is_file():
+            raise FileNotFoundError(f'ScaleCUA image filter missing from both {agent} and {adapter}')
+        sys.path.insert(0, str(evaluator))
+        try:
+            upstream = importlib.import_module('mm_agents.scalecua-osworld.main')
+        finally:
+            sys.path.pop(0)
+    return upstream._maybe_filter_to_n_most_recent_images
 
 
 def task_request(name, index):
@@ -75,9 +96,7 @@ async def release_failed_start(client, worker, exc):
 
 async def collect_all(args):
     source = Path(os.getenv('CUA_SOURCE_DIR', ROOT / 'SCALE-CUA'))
-    spec = importlib.util.spec_from_file_location('original_server_agent', source / 'scalecua_rl/scripts/server_agent.py')
-    upstream = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(upstream)
+    filter_images = load_image_filter(source)
     primary = json.loads(args.primary_service.read_text())
     services = load_services(args.service_pool, primary)
     indices = json.loads(args.indices.read_text())
@@ -141,7 +160,7 @@ async def collect_all(args):
                         raise RuntimeError('Initialization returned no live observation: ' + str(data.get('status')))
                     messages = data['messages']; tools = data.get('tools', [])
                     for turn in range(60):
-                        messages = upstream._maybe_filter_to_n_most_recent_images(messages, 5, 5)
+                        messages = filter_images(messages, 5, 5)
                         record['model_calls'] += 1
                         write_json(attempt, record)
                         payload = {'model': service['served_model_name'], 'messages': messages,

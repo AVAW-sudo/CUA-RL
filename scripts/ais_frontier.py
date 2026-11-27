@@ -23,6 +23,18 @@ from ais_worker_cache import stage_worker
 TASK = 'os_13584542-872b-42d8-b299-866967b5c3ef_traj_verify_2'
 
 
+def log_error(path):
+    try:
+        with path.open('rb') as stream:
+            end = stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, end - 65536))
+            tail = stream.read().decode(errors='replace')
+    except OSError:
+        return None
+    match = re.search(r'\b(?:\w+Error|Exception): [^\r\n]+', tail)
+    return match.group()[:1800] if match else None
+
+
 def check_services(policy, desktop, out):
     for name, process, logs in (
         ('vLLM', policy, ('policy/server.log', 'policy.log')),
@@ -34,16 +46,9 @@ def check_services(policy, desktop, out):
         message = f'{name} exited with code {code}'
         for relative in logs:
             path = out / relative
-            try:
-                with path.open('rb') as stream:
-                    end = stream.seek(0, os.SEEK_END)
-                    stream.seek(max(0, end - 65536))
-                    tail = stream.read().decode(errors='replace')
-            except OSError:
-                continue
-            match = re.search(r'\b(?:\w+Error|Exception): [^\r\n]+', tail)
-            if match:
-                raise RuntimeError(f'{message}. {match.group()[:1800]} ({path})')
+            detail = log_error(path)
+            if detail:
+                raise RuntimeError(f'{message}. {detail} ({path})')
         raise RuntimeError(f'{message}. See {out / logs[-1]}')
 
 
@@ -133,7 +138,9 @@ def collector_services(out, indices, expected, status, screen_lanes):
                         next_report = time.monotonic() + 60
                     time.sleep(1)
                 if collector.returncode:
-                    raise RuntimeError(f'Collector exited with {collector.returncode}; see collector.log and episode attempts')
+                    path = destination / 'collector.log'
+                    detail = log_error(path) or 'See collector log and episode attempts'
+                    raise RuntimeError(f'Collector exited with {collector.returncode}. {detail} ({path})')
 
         yield collect
 

@@ -2,6 +2,7 @@
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -31,9 +32,15 @@ class FrontierCollectorTest(unittest.TestCase):
                     sid = '1' if task == 'test-task' else '2'
                     self.server.test.assertIn(task, {'test-task', 'next-task'})
                     starts.append(task)
-                    data = {'finish': False, 'messages': [{'role': 'user', 'content': 'test'}]}
+                    history = [{'role': 'user', 'content': 'test'}]
+                    for i in range(11):
+                        history.append({'role': 'tool', 'content': [{'type': 'image_url', 'image_url': {'url': str(i)}}]})
+                    data = {'finish': False, 'messages': history}
                 elif self.path == '/chat/completions':
                     self.server.test.assertEqual(payload['model'], 'test-model')
+                    kept = [item['image_url']['url'] for msg in payload['messages'] if msg['role'] == 'tool'
+                            for item in msg['content'] if item['type'] == 'image_url']
+                    self.server.test.assertEqual(kept, list(map(str, range(5, 11))))
                     data = {'choices': [{'message': {'role': 'assistant', 'content': 'done'}}]}
                 elif self.path == '/interact':
                     data = {'finish': True, 'status': 'completed', 'reward': 1}
@@ -99,8 +106,14 @@ class FrontierCollectorTest(unittest.TestCase):
                 self.assertEqual(len(list(folder.glob('*/*/result.json'))), 8)
                 folder = base / 'formal'
                 before = calls.copy()
+                # Follow-up jobs run the collector against the worker archive, which ships only the evaluator and worker.
+                source = Path(os.getenv('CUA_SOURCE_DIR', ROOT / 'SCALE-CUA'))
+                staged = base / 'worker-source'
+                staged.mkdir()
+                (staged / 'osworld_eval').symlink_to((source / 'osworld_eval').resolve(), target_is_directory=True)
                 subprocess.run(cmd + ['--output', str(folder), '--screening', '--check-initial-state',
-                                      '--concurrency', '2'], check=True, capture_output=True, text=True, timeout=40)
+                                      '--concurrency', '2'], env=dict(os.environ, CUA_SOURCE_DIR=str(staged)),
+                               check=True, capture_output=True, text=True, timeout=40)
                 self.assertEqual(calls['/start_sample'] - before['/start_sample'], 6)
                 self.assertEqual(calls['/chat/completions'] - before['/chat/completions'], 4)
                 self.assertEqual(json.loads((folder / 'test-task/initial-state.json').read_text())['status'], 'passed')
