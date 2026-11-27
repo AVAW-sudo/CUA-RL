@@ -40,7 +40,7 @@ def plan(indices, lanes):
 
 
 def expected_protocol(indices):
-    original = read(ROOT / 'runs/frontier-pilot-initialization/protocol.json')
+    original = read(Path(os.environ.get('CUA_SCREEN_PROTOCOL', ROOT / 'runs/frontier-pilot-initialization/protocol.json')))
     return dict(original, tasks=len(read(indices)), indices_sha256=hashlib.sha256(indices.read_bytes()).hexdigest(),
                 services=original['services'][:1])
 

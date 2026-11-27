@@ -1,0 +1,16 @@
+{
+  "source_job": "23560412",
+  "revision": "ca4266e614883a8bed5b8e9caf4f0fcbccb6a023",
+  "runtime": {
+    "worker": "33796a2a54170306d700e13e84c0a7f26507794af612a823af1f64fe740d00f4",
+    "policy": "c8d852296eec9f6e9abf3391fff7c5998d50074f8ed256b1d63eaeeb5039137b",
+    "fixtures": "06ad086f8836edf0bf4c1c9b63659877ae31aaa402692183f0310aea403672f1",
+    "model_revision": "406fe37598dc77b452bee1904c43411fbb6c5fad",
+    "initial_state_check": "untouched-done-v1"
+  },
+  "files": {
+    "protocol.json": "e196cca9fe43b466e5cdf7ae4bf5e484065030d89f157597f33c7df5d9d54b67",
+    "candidates.jsonl": "e1281d879745617afe653f636f5df5e6586785e5ceef0ebe4815fbc0df19c3df",
+    "baseline.jsonl": "5bcf704705b7186645d9614bdeca40ba0294447def4690e8c4782d786bca1e39"
+  }
+}

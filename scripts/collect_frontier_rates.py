@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import os
 import time
 from pathlib import Path
 
@@ -73,7 +74,8 @@ async def release_failed_start(client, worker, exc):
 
 
 async def collect_all(args):
-    spec = importlib.util.spec_from_file_location('original_server_agent', ROOT / 'SCALE-CUA/scalecua_rl/scripts/server_agent.py')
+    source = Path(os.getenv('CUA_SOURCE_DIR', ROOT / 'SCALE-CUA'))
+    spec = importlib.util.spec_from_file_location('original_server_agent', source / 'scalecua_rl/scripts/server_agent.py')
     upstream = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(upstream)
     primary = json.loads(args.primary_service.read_text())

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import tempfile
 import threading
 import time
 
@@ -79,7 +80,8 @@ def check_manifest(rows, training, previous=(), catalog=None):
 
 
 class ScreenQueue:
-    def __init__(self, directory, training, roster=ROSTER, reviewed=REVIEWED, previous=(), catalog=None):
+    def __init__(self, directory, training, roster=ROSTER, reviewed=REVIEWED, previous=(), catalog=None, fixed_inputs=None):
+        self.fixed_inputs = fixed_inputs
         self.directory = directory
         self.training = training
         self.roster = roster
@@ -91,10 +93,9 @@ class ScreenQueue:
         self.done = {}
 
     def snapshot(self):
-        rows = records(self.roster)
+        rows, baseline = self.fixed_inputs if self.fixed_inputs is not None else (records(self.roster), records(self.reviewed))
         check_manifest(rows, self.training, self.previous, self.catalog)
         by_id = {row['task_index']: row for row in rows}
-        baseline = records(self.reviewed)
         accepted = {}
         prompts = set()
         counts = Counter()
@@ -170,7 +171,7 @@ class ScreenQueue:
                 raise TimeoutError(f'Screening tasks have no outcome: {sorted(claimed - self.done.keys())}')
             time.sleep(5)
 
-    def publish(self, final=False):
+    def publish(self, final=False, export_indices=False):
         pending, accepted, deficits = self.snapshot()
         claimed = {p.name for p in self.tasks.iterdir()}
         remaining = sum(r['task_index'] not in claimed for r in pending)
@@ -188,6 +189,8 @@ class ScreenQueue:
         write_lines(self.directory / 'prompts-reviewed.jsonl', accepted.values())
         save(self.directory / 'progress.json', result)
         if final:
+            if export_indices:
+                save(self.directory / 'train-indices.json', list(accepted))
             result['results'] = self.done
             save(self.directory / 'summary.json', result)
         return result
@@ -225,11 +228,17 @@ def runtime_identity():
                 initial_state_check='untouched-done-v1')
 
 
-def complete_task(folder, row, history, runtime, collect):
+def complete_task(folder, row, history, runtime, collect, prior_evidence=None):
     i = row['task_index']
     if row['purpose'] == 'additional_four':
-        previous = read(OLD_RUNS / row['prior_job'] / 'summary.json')['results'][i]
-        if previous['raw_rewards'] != row['prior_raw_rewards'] or previous['full_credit_rate'] != 0:
+        if prior_evidence is None:
+            archived = read(OLD_RUNS / row['prior_job'] / 'summary.json')['results'][i]
+            if archived['full_credit_rate'] != 0:
+                raise ValueError(f'Original four trials were not all below full credit: {i}')
+            previous = archived['raw_rewards']
+        else:
+            previous = prior_evidence[i]
+        if previous != row['prior_raw_rewards'] or len(previous) != 4 or 1 in previous:
             raise ValueError(f'Supplemental trials differ from the original four results: {i}')
     indices = folder / 'indices.json'
     save(indices, [i])
@@ -266,16 +275,31 @@ def complete_task(folder, row, history, runtime, collect):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--followup', action='store_true')
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('--reuse-from', metavar='JOB_ID')
     parser.add_argument('--desktops-per-rank', type=int, choices=range(1, 9), default=2)
     args = parser.parse_args()
     training = sorted({i for ids in read(ROOT / 'configs/research-splits/train-examples.json').values() for i in ids})
-    rows = records(ROSTER)
-    previous = previous_batches()
-    catalog_path = AUDIT / 'index.jsonl'
-    catalog = {r['id']: r for r in records(catalog_path)} if catalog_path.is_file() else None
-    check_manifest(rows, set(training), previous, catalog)
+    roster, reviewed, root = ROSTER, REVIEWED, RUNS
+    catalog = None
+    previous = set()
+    prior_evidence = None
+    if args.followup:
+        import ais_screen_followup as followup
+        root = followup.RUN_ROOT
+        os.environ['CUA_SCREEN_PROTOCOL'] = str(followup.BUNDLE / 'protocol.json')
+        if args.plan:
+            with tempfile.TemporaryDirectory() as temp:
+                report, _, _ = followup.prepare(Path(temp))
+                print(json.dumps(report, indent=2), flush=True)
+            return
+    else:
+        rows = records(roster)
+        previous = previous_batches()
+        catalog_path = AUDIT / 'index.jsonl'
+        catalog = {r['id']: r for r in records(catalog_path)} if catalog_path.is_file() else None
+        check_manifest(rows, set(training), previous, catalog)
     if args.plan:
         baseline = records(REVIEWED)
         strict_counts = Counter(r['selection_role'] for r in baseline)
@@ -293,30 +317,50 @@ def main():
     job = os.environ.get('JOB_ID', '')
     rank = int(os.environ.get('RANK', '-1'))
     if not job.isdigit() or rank not in range(8) or os.environ.get('WORLD_SIZE') != '8':
-        parser.error('screen-expand requires one AIS job with eight single-GPU ranks')
-    directory = RUNS / job
+        parser.error('Screening requires one AIS job with eight single-GPU ranks')
+    directory = root / job
     out = directory / f'rank-{rank}'
     out.mkdir(parents=True, exist_ok=False)
     status = {'rank': rank, 'status': 'starting'}
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     stop_report = threading.Event()
     try:
-        if catalog is None:
+        if args.followup:
+            roster, reviewed = directory / 'roster.jsonl', directory / 'baseline.jsonl'
+        elif catalog is None:
             raise ValueError(f'Missing training/holdout audit at {catalog_path}')
-        queue = ScreenQueue(directory, set(training), ROSTER, REVIEWED, previous, catalog)
-        if rank == 0:
-            prior = earlier_jobs(RUNS, job, args.reuse_from)
-            save(directory / 'campaign.json', {'history': [p.name for p in prior], 'runtime': runtime_identity(),
-                                               'initial_candidates': [r['task_index'] for r in rows]})
-        campaign = read_rank_status(directory / 'campaign.json')
         runtime = runtime_identity()
+        if rank == 0:
+            campaign = {'runtime': runtime}
+            if args.followup:
+                if runtime != read(followup.BUNDLE / 'manifest.json')['runtime']:
+                    raise ValueError('Follow-up allocation differs from the frozen sampling runtime')
+                print('AIS rank 0: starting CPU candidate review', flush=True)
+                report, rows, baseline = followup.prepare(directory)
+                print(json.dumps(report), flush=True)
+                campaign['fixed_inputs'] = [rows, baseline]
+            prior = earlier_jobs(root, job, args.reuse_from)
+            campaign.update(history=[p.name for p in prior], initial_candidates=[r['task_index'] for r in rows])
+            save(directory / 'campaign.json', campaign)
+        deadline = time.monotonic() + int(os.getenv('CUA_FRONTIER_JOIN_SECONDS', '86400'))
+        while not (campaign := read_rank_status(directory / 'campaign.json', missing_ok=True, poll=True)):
+            state = read_rank_status(directory / 'rank-0/status.json', missing_ok=True, poll=True)
+            if state and state['status'] == 'failed':
+                raise RuntimeError(f"Rank 0 preparation failed: {state.get('error')}")
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Waiting for rank 0 to publish the screening campaign')
+            time.sleep(2)
+        if args.followup:
+            prior_evidence = {r['task_index']: r['raw_rewards'] for r in records(followup.BUNDLE / 'candidates.jsonl')
+                              if r['kind'] == 'partial' and 'receipt' in r}
+        queue = ScreenQueue(directory, set(training), roster, reviewed, previous, catalog, campaign.get('fixed_inputs'))
         if runtime != campaign['runtime']:
             raise ValueError('Screening runtime differs between AIS ranks')
-        history = [RUNS / n for n in campaign['history'] if read(RUNS / n / 'campaign.json')['runtime'] == runtime]
-        if args.reuse_from and RUNS / args.reuse_from not in history:
+        history = [root / n for n in campaign['history'] if read(root / n / 'campaign.json')['runtime'] == runtime]
+        if args.reuse_from and root / args.reuse_from not in history:
             raise ValueError('Requested job has a different runtime')
         def report():
-            monitor = ScreenQueue(directory, set(training), ROSTER, REVIEWED, previous, catalog)
+            monitor = ScreenQueue(directory, set(training), roster, reviewed, previous, catalog, campaign.get('fixed_inputs'))
             while not stop_report.is_set():
                 try:
                     monitor.publish()
@@ -341,7 +385,7 @@ def main():
                     status.update(status='collecting', current_task=i)
                     save(out / 'status.json', status)
                     print(f'Screening rank {rank} claimed {i}', flush=True)
-                    complete_task(queue.tasks / i, row, history, runtime, collect)
+                    complete_task(queue.tasks / i, row, history, runtime, collect, prior_evidence)
                 status.update(status='shard_complete', current_task=None)
                 save(out / 'status.json', status)
                 if rank != 0:
@@ -349,7 +393,12 @@ def main():
                 wait_for_shards(directory)
                 stop_report.set()
                 reporter.join()
-                summary = queue.publish(final=True)
+                if args.followup:
+                    stack.close()
+                    queue.snapshot()
+                    summary = followup.finish(queue)
+                else:
+                    summary = queue.publish(final=True)
                 if summary:
                     print(f"Screening {summary['status']}: {summary['strict_total']}/256 strict. {directory}", flush=True)
                     break

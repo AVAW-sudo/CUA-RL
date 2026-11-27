@@ -95,7 +95,7 @@ def main():
         if primary['served_model_name'] != spec['served_model_name']:
             raise ValueError('Archived benchmark model name mismatch')
     else:
-        protocol_path = ROOT / 'runs/frontier-pilot-initialization/protocol.json'
+        protocol_path = Path(os.environ.get('CUA_SCREEN_PROTOCOL', ROOT / 'runs/frontier-pilot-initialization/protocol.json'))
         protocol = json.loads(protocol_path.read_text())
         primary = protocol['services'][0]
         source = lock['sft_model']

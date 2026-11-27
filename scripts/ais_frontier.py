@@ -78,6 +78,8 @@ def collector_services(out, indices, expected, status, screen_lanes):
         runtime, status['worker_cache'] = stage_worker(Path(os.getenv(
             'CUA_WORKER_MANIFEST', base / 'ENV/cache/ais-osworld-worker/manifest.json')))
         cpu_env = dict(os.environ, PYTHONPATH=str(runtime / 'site'))
+        if 'CUA_SCREEN_PROTOCOL' in cpu_env:
+            cpu_env.setdefault('CUA_SOURCE_DIR', str(runtime / 'SCALE-CUA'))
         executable = sys.executable if sys.version_info[:2] == (3, 10) else str(base / 'ENV/conda_envs/test-gpu/bin/python')
         cpu = [os.getenv('CUA_WORKER_PYTHON', executable), '-S', '-u']
         cpu_env.setdefault('CUA_FRONTIER_WARM_GUEST', '1')
