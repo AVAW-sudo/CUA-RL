@@ -70,6 +70,18 @@ def score_cases(worker, case, evaluator):
     return scores
 
 
+def historical_rewards(row):
+    receipt = row['receipt']
+    gate = receipt['gate']
+    raw = row['raw_rewards']
+    if (gate['task_index'] != row['task_index'] or gate['status'] != 'passed' or gate['reward'] != 0
+            or not gate['session_id'] or len(raw) != 4 or len(receipt['results']) != 4
+            or len(set(receipt['results'])) != 4
+            or any(type(v) not in (int, float) or not 0 <= v <= 1 for v in raw)):
+        raise ValueError(f'Invalid historical scores or initial state for {row["task_index"]}')
+    return raw
+
+
 def prepare(out, worker=None):
     manifest = read(BUNDLE / 'manifest.json')
     if manifest['revision'] != read(ROOT / 'configs/sources.lock.json')['training_data']['revision']:
@@ -89,8 +101,20 @@ def prepare(out, worker=None):
     known = {r['task_index'] for r in baseline + source if r.get('kind') != 'new'}
     known.update(r['task_index'] for name in ('expand-queue', 'expand-review') for r in records(CONFIG / (name + '.jsonl')))
     seen_ids, seen_prompts, accepted, queue, decisions = set(), set(), [], [], []
+    historical_review = []
     queued_prompts = set()
     counts = Counter()
+
+    @lru_cache(maxsize=1)
+    def heldout_prompts():
+        prompts = set()
+        for split in ('dev', 'test'):
+            examples = read(ROOT / f'configs/research-splits/{split}-examples.json')
+            for app, ids in examples.items():
+                for i in ids:
+                    path = worker / 'data/ScaleCUA/osworld/rl_tasks' / app / (i.removeprefix(app + '_') + '.json')
+                    prompts.add(normalized(read(path)['instruction']))
+        return prompts
 
     def official(r):
         i = r['task_index']
@@ -129,24 +153,28 @@ def prepare(out, worker=None):
                 verdict = 'judge_failed_controls'
         if role == 'main' and (r['seed_score'] is None or r['seed_score'] >= 1):
             verdict = 'no_measured_seed_weakness'
+        if (kind == 'scored' and role == 'main' and verdict == 'needs_skill_or_judge_controls'
+                and 'receipt' in r):
+            raw = historical_rewards(r)
+            if not 0 < raw.count(1) < 4:
+                raise ValueError(f'Expected mixed historical rewards for {i}')
+            historical_review.append(dict(task_index=i, prompt=prompt, role=role, seed_score=r['seed_score'],
+                                          raw_rewards=raw, source=r['source'], needs=verdict))
         if not verdict:
             pending_review = r.get('awaiting_review') is True
             if pending_review:
-                if kind != 'new' or role != 'breadth' or skill or scores:
+                if kind != 'new' or role not in ('main', 'breadth') or skill or scores:
                     raise ValueError(f'Invalid unreviewed candidate: {i}')
+                if role == 'main' and normalized(prompt) in heldout_prompts():
+                    raise ValueError(f'Main screening prompt repeats a held-out instruction: {i}')
             elif not skill or not controls_pass(scores):
                 raise ValueError(f'Missing judge controls for {i}')
             row = dict(task_index=i, prompt=prompt, role=role, reviewed_skill=skill,
                        offline_controls=scores, base_id=task['id'], app=domains[i], seed_score=r['seed_score'])
+            if pending_review and role == 'main':
+                row['shared_setup_inputs'] = r['shared_setup_inputs']
             if kind != 'new':
-                # These are portable receipts from the previous completed CPU trajectory audit.
-                receipt = r['receipt']
-                raw = r['raw_rewards']
-                gate = receipt['gate']
-                if (gate['task_index'] != i or gate['status'] != 'passed' or gate['reward'] != 0 or
-                        not gate['session_id'] or len(raw) != 4 or len(set(receipt['results'])) != 4 or
-                        any(type(v) not in (int, float) or not 0 <= v <= 1 for v in raw)):
-                    raise ValueError(f'Invalid historical scores or initial state for {i}')
+                raw = historical_rewards(r)
             if kind == 'scored':
                 if role != 'breadth' and not 0 < raw.count(1) < 4:
                     raise ValueError(f'Expected mixed historical rewards for {i}')
@@ -173,12 +201,14 @@ def prepare(out, worker=None):
                     queued_prompts.add(key)
                     queue.append(row)
         decisions.append(dict(task_index=i, kind=kind, decision=verdict, controls=scores))
-    # Reuse earlier partials first, then screen reviewed weak-seed tasks before the reserves.
-    queue.sort(key=lambda r: (r['purpose'] != 'additional_four', bool(r.get('reserve')), not r['reviewed_skill']))
+    queue.sort(key=lambda r: (r['purpose'] != 'additional_four', r['role'] != 'main',
+                              bool(r.get('reserve')), not r['reviewed_skill']))
     check_manifest(queue, set(domains), known)
     write_lines(out / 'roster.jsonl', queue)
     write_lines(out / 'baseline.jsonl', accepted)
     write_lines(out / 'cpu-decisions.jsonl', decisions)
+    write_lines(out / 'historical-main-for-review.jsonl', historical_review)
+    pending_main = [r for r in queue if r['role'] == 'main' and not r['reviewed_skill']]
     summary = dict(inputs=dict(Counter(r['kind'] for r in source)), strict_before=len(baseline),
                    strict_after_cpu=len(accepted), by_role=dict(counts),
                    decisions=dict(Counter(r['decision'] for r in decisions)),
@@ -186,6 +216,9 @@ def prepare(out, worker=None):
                    gpu_by_role=dict(Counter(r['role'] for r in queue)),
                    gpu_reserve=sum(bool(r.get('reserve')) for r in queue),
                    gpu_with_controls=sum(bool(r['reviewed_skill']) for r in queue),
+                   new_main_for_review=len(pending_main),
+                   new_main_with_shared_inputs=sum(bool(r['shared_setup_inputs']) for r in pending_main),
+                   historical_main_for_cpu_review=len(historical_review),
                    max_new_trials=4*len(queue), ranks=8)
     save(out / 'cpu-summary.json', summary)
     return summary, queue, accepted
@@ -193,7 +226,8 @@ def prepare(out, worker=None):
 
 def finish(queue):
     # Re-read the new traces after the eight collectors have closed, before exporting training IDs.
-    awaiting_review = []
+    history = queue.directory / 'historical-main-for-review.jsonl'
+    awaiting_review = records(history) if history.is_file() else []
     for i, result in queue.done.items():
         folder = queue.tasks / i
         protocol = expected_protocol(folder / 'indices.json')
@@ -204,8 +238,11 @@ def finish(queue):
         row = result['candidate']
         if (not row.get('reviewed_skill') and audited['initial_state']['status'] == 'passed'
                 and not audited['unscored']):
-            awaiting_review.append(dict(task_index=i, prompt=row['prompt'], role=row['role'],
-                                        raw_rewards=audited['raw_rewards'], source=str(folder)))
+            candidate = dict(task_index=i, prompt=row['prompt'], role=row['role'],
+                             raw_rewards=audited['raw_rewards'], source=str(folder))
+            if 'shared_setup_inputs' in row:
+                candidate.update(seed_score=row['seed_score'], shared_setup_inputs=row['shared_setup_inputs'])
+            awaiting_review.append(candidate)
     write_lines(queue.directory / 'scored-for-review.jsonl', sorted(awaiting_review, key=lambda r: r['task_index']))
     summary = queue.publish(final=True, export_indices=True)
     if summary is None:
