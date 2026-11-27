@@ -227,6 +227,9 @@ def prepare(out, worker=None):
 def finish(queue):
     # Re-read the new traces after the eight collectors have closed, before exporting training IDs.
     history = queue.directory / 'historical-main-for-review.jsonl'
+    carry = queue.directory / 'carried-for-review.jsonl'
+    if carry.is_file():
+        history = carry
     awaiting_review = records(history) if history.is_file() else []
     for i, result in queue.done.items():
         folder = queue.tasks / i

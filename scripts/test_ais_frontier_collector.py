@@ -69,7 +69,8 @@ class FrontierCollectorTest(unittest.TestCase):
             meta = base / 'service.json'
             meta.write_text(json.dumps({'checkpoint': 'osworld-sft', 'base_url': service, 'hostname': 'fixture',
                                         'model_revision': 'fixture', 'served_model_name': 'test-model',
-                                        'command': ['test-service', '--port', str(server.server_port)]}))
+                                        'command': ['python', '-m', 'vllm.test', '--model', 'fixture', '--host',
+                                                    '127.0.0.1', '--port', str(server.server_port)]}))
             pool, tasks = base / 'pool.json', base / 'tasks.json'
             pool.write_text(json.dumps({'checkpoint': 'osworld-sft', 'service_states': [str(meta)]}))
             tasks.write_text(json.dumps(['test-task']))
@@ -121,6 +122,20 @@ class FrontierCollectorTest(unittest.TestCase):
                                  'nonzero_initial_reward')
                 self.assertEqual(len(list((folder / 'test-task').glob('*/result.json'))), 4)
                 self.assertFalse(list((folder / 'next-task').glob('*/result.json')))
+                # The inference process can restart with a different mount while retaining the original model.
+                previous = (folder / 'protocol.json').read_bytes()
+                identity = json.loads(meta.read_text())
+                identity['command'][4] = '/new-mount/fixture'
+                meta.write_text(json.dumps(identity))
+                retry = cmd + ['--output', str(folder), '--screening', '--check-initial-state',
+                               '--reused-protocol', str(folder / 'protocol.json')]
+                before = calls['/chat/completions']
+                subprocess.run(retry, check=True, capture_output=True, timeout=40)
+                self.assertEqual(calls['/chat/completions'], before)
+                self.assertEqual((folder / 'protocol.json').read_bytes(), previous)
+                identity['model_revision'] = 'different-model'
+                meta.write_text(json.dumps(identity))
+                self.assertNotEqual(subprocess.run(retry, capture_output=True, timeout=40).returncode, 0)
             finally:
                 server.shutdown()
                 worker.join()

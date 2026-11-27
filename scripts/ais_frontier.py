@@ -23,6 +23,10 @@ from ais_worker_cache import stage_worker
 TASK = 'os_13584542-872b-42d8-b299-866967b5c3ef_traj_verify_2'
 
 
+class ServiceExited(RuntimeError):
+    """A private desktop or inference process exited while this rank owned it."""
+
+
 def log_error(path):
     try:
         with path.open('rb') as stream:
@@ -48,8 +52,8 @@ def check_services(policy, desktop, out):
             path = out / relative
             detail = log_error(path)
             if detail:
-                raise RuntimeError(f'{message}. {detail} ({path})')
-        raise RuntimeError(f'{message}. See {out / logs[-1]}')
+                raise ServiceExited(f'{message}. {detail} ({path})')
+        raise ServiceExited(f'{message}. See {out / logs[-1]}')
 
 
 @contextmanager
@@ -97,7 +101,8 @@ def collector_services(out, indices, expected, status, screen_lanes):
         while time.monotonic() < until:
             check_services(policy, desktop, out)
             try:
-                if json.loads(service_state.read_text())['status'] == 'ready':
+                state = json.loads(service_state.read_text())
+                if state['status'] == 'ready' and state['base_url'] == f'http://127.0.0.1:{policy_port}/v1':
                     with HTTP.open(controller + '/get_indices?name=osworld-pilot', timeout=4) as response:
                         if {str(i) for i in json.load(response) if i != -1} == expected:
                             break
@@ -138,6 +143,7 @@ def collector_services(out, indices, expected, status, screen_lanes):
                         next_report = time.monotonic() + 60
                     time.sleep(1)
                 if collector.returncode:
+                    check_services(policy, desktop, out)
                     path = destination / 'collector.log'
                     detail = log_error(path) or 'See collector log and episode attempts'
                     raise RuntimeError(f'Collector exited with {collector.returncode}. {detail} ({path})')

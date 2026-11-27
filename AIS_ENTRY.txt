@@ -18,6 +18,8 @@
 # 主练扩围。八卡共 16 个桌面，新增 133 道候选，每道先测初态，再采 4 次。自动复用前一作业的有效评分。
 # 45 道已有四次评分的主练候选只进 CPU 复核清单。作业启动时固定队列，--plan 查看本次规模。
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-followup
+# 全池连续筛选：接在 23593010 后，同一个八卡作业复核、补缺分、继续领完训练划分的剩余候选，满额即停。
+# bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-after 23593010
 # 复核使用 CPU。传入正在跑的 screen-expand 作业号，会等待该作业收尾，再核验本轮和历史评分。
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-review 23560412
 # RL 只提交一个作业。支持 8 个单卡 rank，或 1 个八卡实例。所有 rank 使用同一条 Entry。
@@ -40,6 +42,9 @@ if (( $# )); then shift; fi
 case "$mode" in
     screen-followup)
         exec python3 -u "$project/scripts/ais_screen_queue.py" --followup "$@"
+        ;;
+    screen-after)
+        exec python3 -u "$project/scripts/ais_screen_queue.py" --followup --after-review "$@"
         ;;
     screen-review)
         exec python3 -u "$project/scripts/review_screen_job.py" "$@"
@@ -85,7 +90,7 @@ case "$mode" in
         exec "$entry" train-check "$@"
         ;;
     *)
-        echo 'Usage: bash AIS_ENTRY.txt [sft|frontier|screen|screen-overnight|screen-next|screen-wide|screen-expand|screen-followup|screen-review JOB_ID|rl-desktop|rl|check]' >&2
+        echo 'Usage: bash AIS_ENTRY.txt [sft|frontier|screen|screen-overnight|screen-next|screen-wide|screen-expand|screen-followup|screen-after JOB_ID|screen-review JOB_ID|rl-desktop|rl|check]' >&2
         exit 2
         ;;
 esac

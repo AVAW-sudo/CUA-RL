@@ -117,9 +117,15 @@ async def collect_all(args):
         from ais_frontier_shards import require_equivalent_protocol
         require_equivalent_protocol(json.loads(args.reused_protocol.read_text()), protocol)
     protocol_path = directory / 'protocol.json'
-    if protocol_path.exists() and json.loads(protocol_path.read_text()) != protocol:
-        raise ValueError('Frontier pre-run protocol changed; preserve this run and use a new directory')
-    write_json(protocol_path, protocol)
+    if protocol_path.exists():
+        original = json.loads(protocol_path.read_text())
+        if original != protocol:
+            if args.screening and args.reused_protocol:
+                require_equivalent_protocol(original, protocol)
+            else:
+                raise ValueError('Frontier pre-run protocol changed; preserve this run and use a new directory')
+    else:
+        write_json(protocol_path, protocol)
     selection = ROOT / 'runs/original-rl-pipeline/secondary-worker-selection.json'
     with (directory / 'launches.jsonl').open('a') as log:
         log.write(json.dumps({'at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),

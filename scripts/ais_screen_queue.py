@@ -12,7 +12,7 @@ import threading
 import time
 
 from ais_dataset_screen import DEFAULT_BATCHES, RUNS as OLD_RUNS, coverage, expected_protocol, restore
-from ais_frontier import collector_services, wait_for_shards
+from ais_frontier import ServiceExited, collector_services, wait_for_shards
 from ais_frontier_shards import read, require_equivalent_protocol
 from ais_rank_status import read_rank_status
 from ais_vm_check import ROOT, save
@@ -124,24 +124,19 @@ class ScreenQueue:
             i, role, prompt = row['task_index'], row['role'], normalized(row['prompt'])
             if i in accepted or prompt in prompts or counts[role] >= QUOTAS[role] or not eligible(row, result):
                 continue
-            rewards = result['raw_rewards']
-            selection_rewards = row.get('prior_raw_rewards', []) + rewards
-            accepted[i] = dict(row, selection_role=role, reviewed_role=role, skill_evidence='reviewed',
-                               judge_controls_reviewed=True, valid_trials=4, raw_rewards=rewards,
-                               full_credit_trials=rewards.count(1), frontier_rate=rewards.count(1)/4,
-                               selection_rewards=selection_rewards,
-                               selection_full_credit_rate=selection_rewards.count(1) / len(selection_rewards),
-                               matched_skill=row['reviewed_skill'], judge_controls=row['offline_controls'],
-                               initial_state_reward=0, source=str(self.directory / 'tasks' / i))
+            accepted[i] = selected_row(row, result, self.tasks / i)
             prompts.add(prompt)
             counts[role] += 1
-        pending = [r for r in rows if counts[r['role']] < QUOTAS[r['role']]
+        need_more = len(accepted) < sum(QUOTAS.values())
+        pending = [r for r in rows if need_more and (r.get('full_pool_candidate') or counts[r['role']] < QUOTAS[r['role']])
                    and r['task_index'] not in accepted and normalized(r['prompt']) not in prompts]
         return pending, accepted, {k: QUOTAS[k]-counts[k] for k in QUOTAS}
 
     def claim(self, rank):
         rows, _, _ = self.snapshot()
         for row in rows:
+            if row['task_index'] in self.done:
+                continue
             folder = self.tasks / row['task_index']
             try:
                 folder.mkdir()  # One owner across all hosts, no shared lock or clock lease.
@@ -194,6 +189,18 @@ class ScreenQueue:
             result['results'] = self.done
             save(self.directory / 'summary.json', result)
         return result
+
+
+def selected_row(row, result, folder):
+    rewards = result['raw_rewards']
+    selection_rewards = row.get('prior_raw_rewards', []) + rewards
+    return dict(row, selection_role=row['role'], reviewed_role=row['role'], skill_evidence='reviewed',
+                judge_controls_reviewed=True, valid_trials=4, raw_rewards=rewards,
+                full_credit_trials=rewards.count(1), frontier_rate=rewards.count(1)/4,
+                selection_rewards=selection_rewards,
+                selection_full_credit_rate=selection_rewards.count(1) / len(selection_rewards),
+                matched_skill=row['reviewed_skill'], judge_controls=row['offline_controls'],
+                initial_state_reward=0, source=str(folder))
 
 
 def eligible(row, result):
@@ -276,6 +283,8 @@ def complete_task(folder, row, history, runtime, collect, prior_evidence=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--followup', action='store_true')
+    parser.add_argument('--full-pool', action='store_true')
+    parser.add_argument('--after-review', metavar='JOB_ID')
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('--reuse-from', metavar='JOB_ID')
     parser.add_argument('--desktops-per-rank', type=int, choices=range(1, 9), default=2)
@@ -285,13 +294,28 @@ def main():
     catalog = None
     previous = set()
     prior_evidence = None
+    upstream = None
+    if args.full_pool and not args.after_review:
+        parser.error('--full-pool requires an upstream job')
+    if args.after_review is not None and (not args.followup or args.reuse_from or not args.after_review.isdecimal()):
+        parser.error('--after-review requires --followup and one upstream job ID')
     if args.followup:
         import ais_screen_followup as followup
         root = followup.RUN_ROOT
         os.environ['CUA_SCREEN_PROTOCOL'] = str(followup.BUNDLE / 'protocol.json')
+        if args.after_review is not None:
+            import ais_screen_after as after
+            upstream = root / args.after_review
+            if not (upstream / 'campaign.json').is_file():
+                parser.error('Expected a follow-up job with a published campaign')
+            upstream, auto_full = after.full_pool_source(upstream, os.getenv('JOB_ID') if not args.plan else None)
+            args.full_pool = args.full_pool or auto_full
         if args.plan:
+            if upstream and not after.ready(upstream, wait=False):
+                print(json.dumps({'status': 'waiting_for_screen', 'upstream_job': upstream.name}), flush=True)
+                return
             with tempfile.TemporaryDirectory() as temp:
-                report, _, _ = followup.prepare(Path(temp))
+                report, _, _ = after.prepare(Path(temp), upstream, full_pool=args.full_pool) if upstream else followup.prepare(Path(temp))
                 print(json.dumps(report, indent=2), flush=True)
             return
     else:
@@ -318,6 +342,8 @@ def main():
     rank = int(os.environ.get('RANK', '-1'))
     if not job.isdigit() or rank not in range(8) or os.environ.get('WORLD_SIZE') != '8':
         parser.error('Screening requires one AIS job with eight single-GPU ranks')
+    if upstream and int(upstream.name) >= int(job):
+        parser.error('The upstream job must precede this job')
     directory = root / job
     out = directory / f'rank-{rank}'
     out.mkdir(parents=True, exist_ok=False)
@@ -335,11 +361,18 @@ def main():
             if args.followup:
                 if runtime != read(followup.BUNDLE / 'manifest.json')['runtime']:
                     raise ValueError('Follow-up allocation differs from the frozen sampling runtime')
+                if upstream:
+                    status.update(status='waiting_for_screen', upstream_job=upstream.name)
+                    save(out / 'status.json', status)
+                    print(f'Waiting for the final screen export from {upstream.name}', flush=True)
+                    after.ready(upstream, wait=True)
+                    campaign['upstream_job'] = upstream.name
+                    campaign['full_pool'] = args.full_pool
                 print('AIS rank 0: starting CPU candidate review', flush=True)
-                report, rows, baseline = followup.prepare(directory)
+                report, rows, baseline = after.prepare(directory, upstream, full_pool=args.full_pool) if upstream else followup.prepare(directory)
                 print(json.dumps(report), flush=True)
                 campaign['fixed_inputs'] = [rows, baseline]
-            prior = earlier_jobs(root, job, args.reuse_from)
+            prior = after.sampling_history(upstream, job) if upstream else earlier_jobs(root, job, args.reuse_from)
             campaign.update(history=[p.name for p in prior], initial_candidates=[r['task_index'] for r in rows])
             save(directory / 'campaign.json', campaign)
         deadline = time.monotonic() + int(os.getenv('CUA_FRONTIER_JOIN_SECONDS', '86400'))
@@ -374,11 +407,20 @@ def main():
         save(indices, training)
         with ExitStack() as stack:
             collector = None
-            def collect(*args_, **kwargs):
+            def collect(destination, *args_, **kwargs):
                 nonlocal collector
-                if collector is None:
-                    collector = stack.enter_context(collector_services(out, indices, set(training), status, args.desktops_per_rank))
-                collector(*args_, **kwargs)
+                for attempt in range(2):
+                    try:
+                        if collector is None:
+                            collector = stack.enter_context(collector_services(out, indices, set(training), status, args.desktops_per_rank))
+                        return collector(destination, *args_, **kwargs)
+                    except ServiceExited as exc:
+                        if attempt:
+                            raise
+                        stack.close()
+                        collector = None
+                        save(destination / 'service-restart.json', {'reason': str(exc), 'rank': rank})
+                        print(f'Rank {rank} restarting its desktop and policy for {destination.name}: {exc}', flush=True)
             while True:
                 while (row := queue.next_task(rank)) is not None:
                     i = row['task_index']
