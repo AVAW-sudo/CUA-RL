@@ -1,0 +1,100 @@
+{
+  "task_id": "libreoffice_calc_4188d3a4-077d-46b7-9c86-23e1a036f6c1_traj_verify_4",
+  "goal": "冻结首行与 A、B 两列，再把工作表改名为 Monthly Data。",
+  "scores": [
+    0.5,
+    0.5,
+    0,
+    0.5,
+    1,
+    1,
+    1,
+    1
+  ],
+  "scores_by_job": {
+    "23533722": [
+      0.5,
+      0.5,
+      0,
+      0.5
+    ],
+    "23560412": [
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "fork_step": null,
+  "grader_note": "读取保存的工作簿，冻结起始格为 C2 得 0.5，表名匹配再得 0.5。对照取自两批，各批均为同一条官方指令。",
+  "runs": [
+    {
+      "job": "23533722",
+      "trial": 1,
+      "score": 0.5,
+      "length": 25,
+      "trace_sha256": "a1eab280936294247e0c97cac956efeb557036f9d95bec758d473bc3d25c60bc",
+      "verdict": "名称正确。冻结横线落在第 2 行下方，多冻结了一行。",
+      "keys": [
+        {
+          "step": 4,
+          "stage": "定位",
+          "image": "frames/r0-s0.webp",
+          "caption": "此帧名称框和橙色选框显示 C2。"
+        },
+        {
+          "step": 12,
+          "stage": "冻结结果",
+          "image": "frames/r0-s1.webp",
+          "caption": "纵线在 B/C 之间，横线在第 2 行下方。"
+        },
+        {
+          "step": 23,
+          "stage": "命名",
+          "image": "frames/r0-s2.webp",
+          "caption": "重命名弹窗中可见 Monthly Data。"
+        },
+        {
+          "step": 25,
+          "stage": "结束",
+          "image": "frames/r0-s3.webp",
+          "caption": "底部标签显示新名称，终局得 0.5。"
+        }
+      ]
+    },
+    {
+      "job": "23560412",
+      "trial": 1,
+      "score": 1.0,
+      "length": 13,
+      "trace_sha256": "5a0a0246e870bf6fdccad69e8613e0ffaff33f393cdfb061d8cef2a70e4f419f",
+      "verdict": "冻结线落在第 1 行下方和 B 列右侧，表名也正确。",
+      "keys": [
+        {
+          "step": 3,
+          "stage": "定位",
+          "image": "frames/r1-s0.webp",
+          "caption": "当前表格选区位于 C2。"
+        },
+        {
+          "step": 5,
+          "stage": "冻结结果",
+          "image": "frames/r1-s1.webp",
+          "caption": "横线在第 1 行下方，纵线在 B/C 之间。"
+        },
+        {
+          "step": 9,
+          "stage": "命名",
+          "image": "frames/r1-s2.webp",
+          "caption": "重命名弹窗中可见 Monthly Data。"
+        },
+        {
+          "step": 13,
+          "stage": "结束",
+          "image": "frames/r1-s3.webp",
+          "caption": "底部标签显示新名称，终局得 1。"
+        }
+      ]
+    }
+  ]
+}

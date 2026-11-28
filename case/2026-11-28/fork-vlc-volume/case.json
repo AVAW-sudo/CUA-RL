@@ -1,0 +1,118 @@
+{
+  "task_id": "vlc_215dfd39-f493-4bc3-a027-8a97d72c61bf_traj_verify_1",
+  "goal": "把 VLC 的最大音量上限改为 200%。",
+  "scores": [
+    0,
+    1,
+    1,
+    0
+  ],
+  "scores_by_job": {
+    "23604025": [
+      0,
+      1,
+      1,
+      0
+    ]
+  },
+  "fork_step": 10,
+  "grader_note": "评分器在结束时读 VLC 配置，检查 Qt 界面的最大音量是否为 200。屏幕里输入过 200 仍可能得零分。",
+  "runs": [
+    {
+      "job": "23604025",
+      "trial": 1,
+      "score": 0.0,
+      "length": 50,
+      "trace_sha256": "c64fe55d835a894bce13127695d888f65165d810217ab7a27251316442b6aa6c",
+      "verdict": "第 10 步重复点击原位置。之后也输入过 200，第 50 步仍停在高级设置，配置检查得 0。",
+      "keys": [
+        {
+          "step": 8,
+          "stage": "共同操作",
+          "image": "frames/r0-s0.webp",
+          "caption": "两次都已经打开设置并滚动。"
+        },
+        {
+          "step": 10,
+          "stage": "分岔",
+          "image": "frames/r0-s1.webp",
+          "caption": "又点了一次与第 9 步相同的位置，随后继续滚动。"
+        },
+        {
+          "step": 32,
+          "stage": "输入之后",
+          "image": "frames/r0-s2.webp",
+          "caption": "第 31 步已经输入过 200，这一步尝试保存。"
+        },
+        {
+          "step": 50,
+          "stage": "结束",
+          "image": "frames/r0-s3.webp",
+          "caption": "画面仍在其他设置项，终局得 0。仅凭录像无法确定最后写入的配置值。"
+        }
+      ]
+    },
+    {
+      "job": "23604025",
+      "trial": 2,
+      "score": 1.0,
+      "length": 25,
+      "trace_sha256": "a5aef0a96666df64c53c02bee54bc40db76514c499b2d5bac508f2289cc40c6b",
+      "verdict": "第 10 步选择 Qt 项，随后找到最大音量，改值并保存，得 1。",
+      "keys": [
+        {
+          "step": 8,
+          "stage": "共同操作",
+          "image": "frames/r1-s0.webp",
+          "caption": "两次都已经打开设置并滚动。"
+        },
+        {
+          "step": 10,
+          "stage": "分岔",
+          "image": "frames/r1-s1.webp",
+          "caption": "点击设置树里的 Qt 项。"
+        },
+        {
+          "step": 22,
+          "stage": "保存",
+          "image": "frames/r1-s2.webp",
+          "caption": "第 21 步输入 200，这一步点击保存。"
+        },
+        {
+          "step": 25,
+          "stage": "结束",
+          "image": "frames/r1-s3.webp",
+          "caption": "画面回到播放器，官方配置检查通过。"
+        }
+      ]
+    }
+  ],
+  "shared_prefix_steps": 9,
+  "review_status": "筛选轨迹；未计入作业 23604025 的正式题单。",
+  "decision_actions": [
+    {
+      "trial": 1,
+      "action": [
+        {
+          "action": "left_click",
+          "coordinate": [
+            312,
+            248
+          ]
+        }
+      ]
+    },
+    {
+      "trial": 2,
+      "action": [
+        {
+          "action": "left_click",
+          "coordinate": [
+            330,
+            361
+          ]
+        }
+      ]
+    }
+  ]
+}

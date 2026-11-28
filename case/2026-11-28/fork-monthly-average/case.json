@@ -1,0 +1,112 @@
+{
+  "task_id": "libreoffice_calc_0a2e43bf-b26c-4631-a966-af9dfa12c9e5_traj_verify_1",
+  "goal": "在销售明细下新建 Average 行，算出六个月各自的平均销售额。",
+  "scores": [
+    0.8333333333333334,
+    1,
+    1,
+    1
+  ],
+  "scores_by_job": {
+    "23593010": [
+      0.8333333333333334,
+      1,
+      1,
+      1
+    ]
+  },
+  "fork_step": 11,
+  "grader_note": "在首张表定位 Average 行，逐列比较 B 至 G 的数值，误差不超过 1 算该列正确，每列占 1/6。",
+  "runs": [
+    {
+      "job": "23593010",
+      "trial": 1,
+      "score": 0.8333333333333334,
+      "length": 18,
+      "trace_sha256": "85add88cff5de0607094c6cbfdae2186bd4424e4a67ff5a47823c901b6ff8b1c",
+      "verdict": "在 E 列按 Tab 跳到 F 列。最后六个月中有五个值正确。",
+      "keys": [
+        {
+          "step": 9,
+          "stage": "共同操作",
+          "image": "frames/r0-s0.webp",
+          "caption": "第 9 步的动作记录是输入 D 列的平均值公式。画面显示输入生效前的工作表。"
+        },
+        {
+          "step": 11,
+          "stage": "分岔",
+          "image": "frames/r0-s1.webp",
+          "caption": "这一步又按了一次 Tab，没有输入 E 列公式。"
+        },
+        {
+          "step": 13,
+          "stage": "分岔之后",
+          "image": "frames/r0-s2.webp",
+          "caption": "记录中的下一条公式已经是 F 列的平均值。"
+        },
+        {
+          "step": 18,
+          "stage": "结束",
+          "image": "frames/r0-s3.webp",
+          "caption": "Average 行的 E 列空着，得 5/6。"
+        }
+      ]
+    },
+    {
+      "job": "23593010",
+      "trial": 3,
+      "score": 1.0,
+      "length": 22,
+      "trace_sha256": "338b4df21817d38bc9d28dc28f4322d42aa2f480cd7880d88b80729e62c07493",
+      "verdict": "同一步在 E 列输入平均值公式，六列最终都正确。",
+      "keys": [
+        {
+          "step": 9,
+          "stage": "共同操作",
+          "image": "frames/r1-s0.webp",
+          "caption": "第 9 步的动作记录是输入 D 列的平均值公式。画面显示输入生效前的工作表。"
+        },
+        {
+          "step": 11,
+          "stage": "分岔",
+          "image": "frames/r1-s1.webp",
+          "caption": "这一步输入 =AVERAGE(E2:E11)。"
+        },
+        {
+          "step": 13,
+          "stage": "分岔之后",
+          "image": "frames/r1-s2.webp",
+          "caption": "E 列有了数值，再继续填写 F 列。"
+        },
+        {
+          "step": 22,
+          "stage": "结束",
+          "image": "frames/r1-s3.webp",
+          "caption": "Average 行的六个月都有数值，得 1。"
+        }
+      ]
+    }
+  ],
+  "shared_prefix_steps": 10,
+  "review_status": "筛选轨迹；未计入作业 23604025 的正式题单。",
+  "decision_actions": [
+    {
+      "trial": 1,
+      "action": [
+        {
+          "action": "key",
+          "text": "Tab"
+        }
+      ]
+    },
+    {
+      "trial": 3,
+      "action": [
+        {
+          "action": "type",
+          "text": "=AVERAGE(E2:E11)"
+        }
+      ]
+    }
+  ]
+}

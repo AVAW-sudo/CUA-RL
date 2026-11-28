@@ -1,0 +1,43 @@
+{
+  "task_id": "os_4127319a-8b79-4410-b58a-7a151e15f3d7_traj_verify_5",
+  "goal": "递归统计 ~/project 中所有 PHP 文件的总行数，并写入 result.txt。",
+  "scores": [
+    1.0,
+    1.0,
+    0.0
+  ],
+  "fork_step": null,
+  "grader_note": "官方检查只要求 cat 的输出包含字符串 54。540 也包含 54，因此错了十倍仍得满分。这道题已在筛选中排除。",
+  "score_unit": "依 controls 顺序列出离线文件对照分数",
+  "metric": "check_include_exclude",
+  "module": "SCALE-CUA/osworld_eval/desktop_env/evaluators/metrics/general.py",
+  "module_sha256": "7517412a6efc46a684a5becee450053445aca63e8f54a4c2ef8f3e398d5e58a9",
+  "worker_bundle": "33796a2a54170306d700e13e84c0a7f26507794af612a823af1f64fe740d00f4",
+  "rules": {
+    "include": [
+      "54"
+    ],
+    "exclude": []
+  },
+  "controls": [
+    {
+      "artifact": "controls/correct.txt",
+      "value": "54",
+      "score": 1.0,
+      "verdict": "正确总数"
+    },
+    {
+      "artifact": "controls/tenfold.txt",
+      "value": "540",
+      "score": 1.0,
+      "verdict": "十倍错答"
+    },
+    {
+      "artifact": "controls/reversed.txt",
+      "value": "45",
+      "score": 0.0,
+      "verdict": "颠倒数字的错答"
+    }
+  ],
+  "runs": []
+}

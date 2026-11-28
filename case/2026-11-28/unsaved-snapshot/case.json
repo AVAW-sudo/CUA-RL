@@ -1,0 +1,66 @@
+{
+  "task_id": "local-probe/unsaved-calc-selection",
+  "goal": "在 Calc 有未保存修改时保存整台虚拟机，改掉内容和选区，然后恢复并核对。",
+  "scores": [],
+  "fork_step": null,
+  "grader_note": "系统验收，无 RL 奖励。独立读取 Calc 的单元格、选区和修改标志，再读取磁盘工作簿的 content.xml 检查两次编辑均未落盘。",
+  "checks": {
+    "before": {
+      "cell": "UNSAVED - before snapshot",
+      "selection": "$Sheet1.$C$3:$D$4",
+      "modified": true,
+      "disk_contains_edit": false
+    },
+    "after": {
+      "cell": "UNSAVED - before snapshot",
+      "selection": "$Sheet1.$C$3:$D$4",
+      "modified": true,
+      "disk_contains_edit": false
+    },
+    "changed": {
+      "cell": "CHANGED - after snapshot",
+      "selection": "$Sheet1.$F$7",
+      "modified": true,
+      "disk_contains_edit": false
+    },
+    "save_seconds": 4.430283986963332,
+    "restore_seconds": 2.7230734899640083,
+    "screenshot_ready_seconds": 4.040933125652373
+  },
+  "runtime": "一次本地 CPU 测量，QEMU TCG、3 vCPU、6144 MiB、OSWorld 私有 qcow2 覆盖盘，LibreOffice Calc。",
+  "timing_note": "save_seconds 是 savevm 的耗时。restore_seconds 从 loadvm 开始到 cont 返回；screenshot_ready_seconds 从同一起点到来宾返回第一张截图，包含 restore_seconds。",
+  "source_png_sha256": {
+    "before": "c535d4d0b940a5ddce7bd55f97fff00dc0a3f6e31c16d6d0675acd99824e14d3",
+    "changed": "beb2c8275a444a04c1b57482a49b51ce894c45f441acab4cb8d140e26d42d4bb",
+    "after": "c535d4d0b940a5ddce7bd55f97fff00dc0a3f6e31c16d6d0675acd99824e14d3"
+  },
+  "runs": [
+    {
+      "trial": 1,
+      "score": null,
+      "length": 3,
+      "step_unit": "依次采集的三种桌面状态",
+      "verdict": "已恢复未保存的 B2 编辑和 C3:D4 选区。",
+      "keys": [
+        {
+          "step": 1,
+          "stage": "保存前",
+          "caption": "B2 显示 UNSAVED - before snapshot，C3:D4 被选中。此时保存整台虚拟机的快照。",
+          "image": "frames/r0-s0.webp"
+        },
+        {
+          "step": 2,
+          "stage": "恢复前的对照",
+          "caption": "随后把 B2 改成 CHANGED - after snapshot，并改选 F7。文件仍未保存。",
+          "image": "frames/r0-s1.webp"
+        },
+        {
+          "step": 3,
+          "stage": "恢复后",
+          "caption": "从同一个快照恢复，B2 和 C3:D4 选区都回到了保存快照时的状态。",
+          "image": "frames/r0-s2.webp"
+        }
+      ]
+    }
+  ]
+}

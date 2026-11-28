@@ -1,0 +1,83 @@
+{
+  "task_id": "multi_apps/00fa164e-2612-4439-992e-157d019a8436",
+  "goal": "从 Calc 的实验表中取出 GPT-4 的结果，作为表格插入 Writer 报告的 Main Results 一节。",
+  "scores": [
+    0,
+    1
+  ],
+  "fork_step": null,
+  "deviation_step": 5,
+  "deviation_note": "按动作坐标和第 8 帧确认，第 5 步点击了 VLC。之后模型仍找到了正确的工作表；这次绕路本身是否导致最终零分，仅凭录像无法确定。",
+  "split": "configs/research-splits/manifest.json 中 train 的原题 ID",
+  "grader_note": "compare_docx_tables 逐表核对表格数、行列数和每一格的文字。任何一处不符都得 0；章节位置不在这个检查里。两次来自不同批次的同名 SFT 模型评估。",
+  "runs": [
+    {
+      "trial": 1,
+      "source": "runs/ais-sft-evaluations/23487614/full/rank-1/released/tasks/multi_apps/00fa164e-2612-4439-992e-157d019a8436/evaluation/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/00fa164e-2612-4439-992e-157d019a8436",
+      "score": 0,
+      "length": 50,
+      "trace_sha256": "62780e52927e7372e5353c6852df17d125115b32f03f33c1ccf3c3676536b948",
+      "verdict": "中途打开 VLC，随后回到了 Calc。耗尽 50 个动作时仍在选择性粘贴对话框。",
+      "keys": [
+        {
+          "step": 4,
+          "stage": "定位报告",
+          "caption": "报告里已经能看到 5.2 Main Results。第 4 步点击启动栏的 Calc。",
+          "image": "frames/r0-s0.webp"
+        },
+        {
+          "step": 5,
+          "stage": "首次偏离",
+          "caption": "第 5 步点击左栏的 VLC 图标，第 6 步又点了同一处。标记框取自动作的桌面坐标。",
+          "image": "frames/r0-s1.webp"
+        },
+        {
+          "step": 8,
+          "stage": "偏离后",
+          "caption": "VLC 播放器出现在空白 Calc 窗口前。模型随后关掉了播放器。",
+          "image": "frames/r0-s2.webp"
+        },
+        {
+          "step": 50,
+          "stage": "结束",
+          "caption": "用到第 50 个动作时，Writer 仍显示选择性粘贴对话框。保存的表格检查得 0。",
+          "image": "frames/r0-s3.webp"
+        }
+      ]
+    },
+    {
+      "trial": 1,
+      "source": "runs/benchmarks/osworld-sft__osworld361-tcg-v3/attempts/multi_apps__00fa164e-2612-4439-992e-157d019a8436/001/results/claude_computer_use/screenshot/scalecua-qwen3-vl-8b-sft/multi_apps/00fa164e-2612-4439-992e-157d019a8436",
+      "score": 1,
+      "length": 34,
+      "trace_sha256": "561c3b1cf7804225ef269a7d704e84beacb98aeedc3fd4693296cc0fb3e32abd",
+      "verdict": "从 Calc 复制表头和 GPT-4 行，切回 Writer 粘贴。官方表格检查通过。",
+      "keys": [
+        {
+          "step": 6,
+          "stage": "打开表格",
+          "caption": "Calc 窗口已出现。",
+          "image": "frames/r1-s0.webp"
+        },
+        {
+          "step": 19,
+          "stage": "复制数据",
+          "caption": "在实验结果工作表中选择表头和 GPT-4 行，并按 Ctrl+C。",
+          "image": "frames/r1-s1.webp"
+        },
+        {
+          "step": 24,
+          "stage": "插入表格",
+          "caption": "切回 Writer 后按 Ctrl+V，Main Results 下方可见表头和数据行。",
+          "image": "frames/r1-s2.webp"
+        },
+        {
+          "step": 34,
+          "stage": "结束",
+          "caption": "报告还显示插入的表格；保存文件的表格内容检查得 1。",
+          "image": "frames/r1-s3.webp"
+        }
+      ]
+    }
+  ]
+}
