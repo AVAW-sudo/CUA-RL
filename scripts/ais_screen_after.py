@@ -67,7 +67,7 @@ def sampling_history(upstream, job):
     return sorted(attempts, key=lambda p: int(p.name), reverse=True) + [upstream]
 
 
-def prepare(out, upstream, *, full_pool=False):
+def prepare(out, upstream, *, full_pool=False, expand_main=False):
     source = read_rank_status(upstream / 'summary.json')
     campaign = read_rank_status(upstream / 'campaign.json')
     manifest = read(BUNDLE / 'manifest.json')
@@ -75,7 +75,10 @@ def prepare(out, upstream, *, full_pool=False):
         raise ValueError('Upstream screen is unfinished or has a different runtime')
     if manifest['revision'] != read(ROOT / 'configs/sources.lock.json')['training_data']['revision']:
         raise ValueError('Training task revision changed')
-    for name in ('candidates.jsonl', 'protocol.json'):
+    files = ['candidates.jsonl', 'protocol.json']
+    if expand_main:
+        files.extend(('main-review-archive.jsonl', 'main-hard-reserve.jsonl'))
+    for name in files:
         if hashlib.sha256((BUNDLE / name).read_bytes()).hexdigest() != manifest['files'][name]:
             raise ValueError(f'Frozen review input changed: {name}')
     manifest_path = Path(os.getenv('CUA_WORKER_MANIFEST', ROOT.parent.parent / 'ENV/cache/ais-osworld-worker/manifest.json'))
@@ -103,6 +106,10 @@ def prepare(out, upstream, *, full_pool=False):
             ancestor = upstream.parent / previous
         inputs.update(inventory['candidates'])
     cases = {r['task_index']: r for r in records(CONFIG / 'after-review-controls.jsonl')}
+    if expand_main:
+        cases.update({r['task_index']: r for r in records(CONFIG / 'main-review-controls.jsonl')})
+        hard_reserve = records(BUNDLE / 'main-hard-reserve.jsonl')
+        inputs.update({r['task_index']: r for r in hard_reserve})
     baseline = published_selection(upstream, source['strict_total'])
     admitted = {r['task_index'] for r in baseline}
     if [r['task_index'] for r in baseline] != read(upstream / 'train-indices.json'):
@@ -116,6 +123,22 @@ def prepare(out, upstream, *, full_pool=False):
     if set(done) - roster.keys() or len(done) != source['completed'] or source['in_flight']:
         raise ValueError('Upstream results disagree with frozen roster or completion count')
     pending = {r['task_index']: r for r in records(upstream / 'scored-for-review.jsonl')}
+    added_by_role = Counter()
+    if expand_main:
+        for entry in records(BUNDLE / 'main-review-archive.jsonl'):
+            i = entry['task_index']
+            evidence = inputs[i]
+            if (evidence['kind'] != 'scored' or evidence.get('hold') != 'needs_skill_or_judge_controls'
+                    or i not in domains or evidence['seed_score'] is None or evidence['seed_score'] >= 1):
+                raise ValueError(f'Unexpected archived main candidate: {i}')
+            # This label opens a manual skill review. Admission still needs independent judge controls.
+            review_role = cases.get(i, {}).get('role', 'main')
+            inputs[i] = dict(evidence, role=review_role, receipt=entry['receipt'])
+            if not campaign.get('expand_main') and i not in pending and i not in admitted and i not in roster:
+                pending[i] = dict(task_index=i, prompt=entry['prompt'], role=review_role, original_role=evidence['role'],
+                                  raw_rewards=historical_rewards(inputs[i]), seed_score=evidence['seed_score'],
+                                  source=evidence['source'])
+                added_by_role[review_role] += 1
     queue, carry, decisions = [], [], []
     slots = 0
     for i in dict.fromkeys([*roster, *pending]):
@@ -161,6 +184,7 @@ def prepare(out, upstream, *, full_pool=False):
             task = verified_json(tasks / domains[i] / (i.removeprefix(domains[i] + '_') + '.json'), inputs[i]['sha256'])
             if task['instruction'] != row['prompt']:
                 raise ValueError(f'Official prompt differs: {i}')
+            row.update(base_id=task['id'], seed_score=inputs[i]['seed_score'])
             case = cases.get(i)
             if case:
                 if inputs[i]['sha256'] != case['task_sha256'] or role != case.get('role', 'main'):
@@ -182,19 +206,63 @@ def prepare(out, upstream, *, full_pool=False):
                 admitted.add(i)
                 prompts.add(key)
                 counts[role] += 1
+            elif (expand_main and role == 'main' and row['purpose'] == 'first_four' and
+                  gate == 'passed' and row.get('reviewed_skill') and controls_pass(row['offline_controls'])
+                  and 1 not in raw and folder.is_absolute() and folder.parents[2] == RUN_ROOT):
+                verdict = 'additional_four'
+                queue.append(dict(row, purpose='additional_four', prior_job=folder.parents[1].name,
+                                  prior_followup=True, prior_raw_rewards=raw))
+                slots += 4
             elif not row.get('reviewed_skill'):
                 verdict = 'needs_skill_or_judge_controls'
                 carry.append(pending[i])
             else:
                 verdict = 'outside_reward_criteria'
         decisions.append(dict(decision, decision=verdict))
+    if expand_main and not campaign.get('expand_main') and counts['main'] < QUOTAS['main']:
+        used_prompts = prompts | {normalized(r['prompt']) for r in queue}
+        for r in hard_reserve:
+            i = r['task_index']
+            if i in admitted or i in roster or i in pending or normalized(r['prompt']) in used_prompts:
+                continue
+            app = domains[i]
+            task = verified_json(tasks / app / (i.removeprefix(app + '_') + '.json'), r['sha256'])
+            raw = historical_rewards(r)
+            if (task['instruction'] != r['prompt'] or normalized(r['prompt']) in heldout_prompts
+                    or r['seed_score'] is None or r['seed_score'] >= 1 or 1 in raw
+                    or not r['reviewed_skill'] or not controls_pass(r['offline_controls'])):
+                raise ValueError(f'Unverified supplemental candidate: {i}')
+            row = {k: r[k] for k in ('task_index', 'prompt', 'role', 'prior_job', 'seed_score', 'reviewed_skill', 'offline_controls')}
+            queue.append(dict(row, app=app, base_id=task['id'], purpose='additional_four', prior_raw_rewards=raw))
+            decisions.append(dict(task_index=i, role='main', decision='additional_four', missing_slots=0))
+            used_prompts.add(normalized(r['prompt']))
+            slots += 4
     queue.sort(key=lambda r: (r['role'] != 'main', not r.get('reviewed_skill')))
-    pool_report = dict(retry_tasks=len(queue), missing_trials=slots)
+    retry_tasks = sum(d['decision'] == 'retry_missing' for d in decisions)
+    pool_report = dict(retry_tasks=retry_tasks, missing_trials=sum(d['missing_slots'] for d in decisions if d['decision'] == 'retry_missing'))
+    if expand_main:
+        pool_report.update(archive_added=sum(added_by_role.values()), archive_added_by_review_role=dict(added_by_role),
+                           main_additional_four=sum(d['decision'] == 'additional_four' for d in decisions))
+        priorities = []
+        for row in carry:
+            i = row['task_index']
+            score = inputs[i]['seed_score']
+            if score is None or score >= 1 or normalized(row['prompt']) in heldout_prompts:
+                continue
+            full = row['raw_rewards'].count(1)
+            if 0 < full < 4 or (row['role'] == 'main' and full == 0):
+                priorities.append(dict(row, seed_score=score, full_credit=full))
+        priorities.sort(key=lambda r: (r['full_credit'] == 0, r['role'] != 'main', r['task_index']))
+        write_lines(out / 'main-for-review.jsonl', priorities)
+        pool_report['pending_main_skill_review'] = len(priorities)
+        pool_report['pending_mixed_main_skill_review'] = sum(r['full_credit'] > 0 for r in priorities)
     if inventory:
         prior_ids.update(roster)
         prior_ids.update(pending)
         pool_report.update(extend(inventory, queue, baseline, decisions, prior_ids, domains, heldout_prompts, worker, cases))
         slots += 4 * pool_report['first_time_tasks']
+    if expand_main:
+        pool_report['gpu_by_role'] = dict(Counter(r['role'] for r in queue))
     check_manifest(queue, set(domains))
     write_lines(out / 'roster.jsonl', queue)
     write_lines(out / 'baseline.jsonl', baseline)

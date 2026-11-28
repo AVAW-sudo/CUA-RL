@@ -154,6 +154,37 @@ class SharedQueueTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             check_manifest([candidate('old')], {'old'}, {'old'})
 
+    def test_supplemental_trials_resume_only_the_same_second_round(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            first = candidate('one')
+            prior_scores = [0, 0, 0.5, 0]
+            row = dict(first, purpose='additional_four', prior_followup=True, prior_job='100',
+                       prior_raw_rewards=prior_scores)
+            for job, purpose, prior in [('100', 'first_four', None), ('101', 'additional_four', '100'),
+                                        ('102', 'additional_four', '99')]:
+                source = root / job / 'tasks/one'
+                (source / 'episodes').mkdir(parents=True)
+                save(source / 'episodes/protocol.json', {})
+                save(source / 'cohort.json', dict(purpose=purpose, prior_job=prior))
+            original = root / '100/tasks/one/outcome.json'
+            save(original, dict(outcome(first), raw_rewards=prior_scores))
+            folder = root / '103/tasks/one'
+            (folder / 'episodes').mkdir(parents=True)
+            history = [root / job for job in ['102', '101', '100']]
+            collect = Mock(side_effect=lambda *a, **kw: save(folder / 'episodes/protocol.json', {}))
+            with (patch('ais_screen_queue.expected_protocol', return_value={}),
+                  patch('ais_screen_queue.require_equivalent_protocol'),
+                  patch('ais_screen_queue.coverage', return_value={'one': outcome(row)}),
+                  patch('ais_screen_queue.restore', return_value=2) as restore):
+                complete_task(folder, row, history, {}, collect)
+                self.assertEqual([c.args[0] for c in restore.call_args_list], [root / '101/tasks/one'])
+                collect.assert_called_once()
+                self.assertEqual(json.loads((folder / 'outcome.json').read_text())['reused_slots'], 2)
+                save(original, dict(outcome(first), raw_rewards=[0, 0, 0, 0]))
+                with self.assertRaisesRegex(ValueError, 'original four'):
+                    complete_task(folder, row, history, {}, collect)
+
     def test_complete_history_skips_gui_and_partial_reuse_collects(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

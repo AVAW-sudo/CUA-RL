@@ -238,7 +238,13 @@ def runtime_identity():
 def complete_task(folder, row, history, runtime, collect, prior_evidence=None):
     i = row['task_index']
     if row['purpose'] == 'additional_four':
-        if prior_evidence is None:
+        if row.get('prior_followup'):
+            archived = read(folder.parents[2] / row['prior_job'] / 'tasks' / i / 'outcome.json')
+            if (archived['task_index'] != i or archived['candidate']['purpose'] != 'first_four'
+                    or archived['initial_state']['status'] != 'passed'):
+                raise ValueError(f'Unexpected first-round evidence for {i}')
+            previous = archived['raw_rewards']
+        elif prior_evidence is None:
             archived = read(OLD_RUNS / row['prior_job'] / 'summary.json')['results'][i]
             if archived['full_credit_rate'] != 0:
                 raise ValueError(f'Original four trials were not all below full credit: {i}')
@@ -259,6 +265,11 @@ def complete_task(folder, row, history, runtime, collect, prior_evidence=None):
         source = previous / 'tasks' / i
         if not (source / 'episodes/protocol.json').is_file():
             continue
+        if row['purpose'] == 'additional_four':
+            source_cohort = read(source / 'cohort.json')
+            if (source_cohort['purpose'] != 'additional_four'
+                    or source_cohort.get('prior_job') != row['prior_job']):
+                continue  # Only resume supplemental trials for the same original four.
         kept = restore(source, folder, [i], protocol, cohort, merge_existing=True)
         if kept:
             reused_from[previous.name] = kept
@@ -284,6 +295,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--followup', action='store_true')
     parser.add_argument('--full-pool', action='store_true')
+    parser.add_argument('--expand-main', action='store_true')
     parser.add_argument('--after-review', metavar='JOB_ID')
     parser.add_argument('--plan', action='store_true')
     parser.add_argument('--reuse-from', metavar='JOB_ID')
@@ -295,8 +307,8 @@ def main():
     previous = set()
     prior_evidence = None
     upstream = None
-    if args.full_pool and not args.after_review:
-        parser.error('--full-pool requires an upstream job')
+    if (args.full_pool or args.expand_main) and not args.after_review:
+        parser.error('--full-pool and --expand-main require an upstream job')
     if args.after_review is not None and (not args.followup or args.reuse_from or not args.after_review.isdecimal()):
         parser.error('--after-review requires --followup and one upstream job ID')
     if args.followup:
@@ -310,12 +322,13 @@ def main():
                 parser.error('Expected a follow-up job with a published campaign')
             upstream, auto_full = after.full_pool_source(upstream, os.getenv('JOB_ID') if not args.plan else None)
             args.full_pool = args.full_pool or auto_full
+            args.expand_main = args.expand_main or read(upstream / 'campaign.json').get('expand_main', False)
         if args.plan:
             if upstream and not after.ready(upstream, wait=False):
                 print(json.dumps({'status': 'waiting_for_screen', 'upstream_job': upstream.name}), flush=True)
                 return
             with tempfile.TemporaryDirectory() as temp:
-                report, _, _ = after.prepare(Path(temp), upstream, full_pool=args.full_pool) if upstream else followup.prepare(Path(temp))
+                report, _, _ = after.prepare(Path(temp), upstream, full_pool=args.full_pool, expand_main=args.expand_main) if upstream else followup.prepare(Path(temp))
                 print(json.dumps(report, indent=2), flush=True)
             return
     else:
@@ -368,8 +381,9 @@ def main():
                     after.ready(upstream, wait=True)
                     campaign['upstream_job'] = upstream.name
                     campaign['full_pool'] = args.full_pool
+                    campaign['expand_main'] = args.expand_main
                 print('AIS rank 0: starting CPU candidate review', flush=True)
-                report, rows, baseline = after.prepare(directory, upstream, full_pool=args.full_pool) if upstream else followup.prepare(directory)
+                report, rows, baseline = after.prepare(directory, upstream, full_pool=args.full_pool, expand_main=args.expand_main) if upstream else followup.prepare(directory)
                 print(json.dumps(report), flush=True)
                 campaign['fixed_inputs'] = [rows, baseline]
             prior = after.sampling_history(upstream, job) if upstream else earlier_jobs(root, job, args.reuse_from)
@@ -386,6 +400,9 @@ def main():
         if args.followup:
             prior_evidence = {r['task_index']: r['raw_rewards'] for r in records(followup.BUNDLE / 'candidates.jsonl')
                               if r['kind'] == 'partial' and 'receipt' in r}
+            if campaign.get('expand_main'):
+                prior_evidence.update({r['task_index']: followup.historical_rewards(r)
+                                       for r in records(followup.BUNDLE / 'main-hard-reserve.jsonl')})
         queue = ScreenQueue(directory, set(training), roster, reviewed, previous, catalog, campaign.get('fixed_inputs'))
         if runtime != campaign['runtime']:
             raise ValueError('Screening runtime differs between AIS ranks')
