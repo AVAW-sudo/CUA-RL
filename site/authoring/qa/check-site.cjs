@@ -1,4 +1,4 @@
-// 浏览器检查：脚本与资源无错误、Case 切换、信号分配图、回放子页、手机不横向溢出。
+// 浏览器检查：章节齐全、真实轨迹的动作条与截图、Case 切换、示意图、回放子页、手机不横向溢出、资源无错误。
 // 运行：先在仓库根目录 `python3 -m http.server 8000 --bind 127.0.0.1 --directory site/dist`，再 `node site/authoring/qa/check-site.cjs`。
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const { join } = require('node:path');
@@ -18,11 +18,14 @@ const shots = mkdtempSync(join(tmpdir(), 'cua-site-'));
     page.on('response', r => { if (r.status() >= 400) errors.push(r.status() + ' ' + r.url()); });
     await page.goto(preview, {waitUntil: 'networkidle'});
 
-    for (const id of ['bench', 'concepts', 'scalecua', 'cualite', 'compare', 'data', 'rl', 'case', 'schedule', 'insight', 'next'])
+    for (const id of ['bench', 'walk', 'grader', 'grpo', 'scalecua', 'cualite', 'data', 'run', 'next', 'conclude'])
       assert(await page.locator('#' + id).count(), 'missing section #' + id);
-    assert.equal(await page.locator('.cfig').count(), 8, 'concept figures');
+    assert.equal(await page.locator('#actStrips .scells').first().locator('i').count(), 46, 'action strip of trial 4');
+    assert.equal(await page.locator('#advStrips .scells').nth(1).locator('i').count(), 50, 'advantage strip of trial 1');
+    assert(await page.locator('#vcurve rect').count() >= 46, 'value curve not drawn');
     assert(await page.locator('#creditMap rect').count() > 100, 'credit map not drawn');
-    assert.equal(await page.locator('#dots32 i.r').count(), 17);
+    for (const src of ['media/walk/mp3-t4-start.webp', 'media/walk/mp3-t4-step2.webp'])
+      assert(await page.locator(`img[src="${src}"]`).evaluate(el => el.complete && el.naturalWidth === 1280), src);
 
     // Case：默认 MP3 的“选择工具”阶段，切到 Thunderbird 再切阶段
     const img0 = page.locator('#caseRun0 img');
@@ -35,8 +38,8 @@ const shots = mkdtempSync(join(tmpdir(), 'cua-site-'));
     assert.match(await page.locator('#caseRun1 img').getAttribute('src'), /tb-r1-s1\.webp$/);
     await page.locator('#caseRun0 .ribbon .mk').first().click();
     assert.match(await img0.getAttribute('src'), /tb-r0-s0\.webp$/);
-    assert(await img0.evaluate(el => el.complete && el.naturalWidth > 0), 'case frame did not load');
-    await page.locator('#case').screenshot({path: join(shots, 'case.jpg'), type: 'jpeg', quality: 82});
+    assert(await img0.evaluate(el => el.complete ? el.naturalWidth > 0 : new Promise(r => { el.onload = () => r(el.naturalWidth > 0); el.onerror = () => r(false); })), 'case frame did not load');
+    await page.locator('#casePlayer').screenshot({path: join(shots, 'case.jpg'), type: 'jpeg', quality: 82});
 
     // 回放子页
     const replay = await browser.newPage({viewport: {width: 1280, height: 900}});
@@ -54,6 +57,6 @@ const shots = mkdtempSync(join(tmpdir(), 'cua-site-'));
     await page.screenshot({path: join(shots, 'phone.jpg'), type: 'jpeg', quality: 80});
 
     assert.deepEqual(errors, []);
-    console.log('通过：11 个章节、8 张概念图、信号分配图、Case 切换、回放子页、手机宽度、资源加载。截图在', shots);
+    console.log('通过：10 个章节、动作条与整屏截图、value 曲线、信号分配图、Case 切换、回放子页、手机宽度、资源加载。截图在', shots);
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
