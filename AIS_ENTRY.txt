@@ -20,7 +20,7 @@
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-followup
 # 全池连续筛选：接在 23593010 后，同一个八卡作业复核、补缺分、继续领完训练划分的剩余候选，满额即停。
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-after 23593010
-# 主练扩围，从 23604025 的正式题单接续，先复核历史候选，再优先补采通过评分器检查的主练难题。
+# 主练扩围，等 23622081 导出正式题单后复用已采评分，优先给通过复核的主练难题补采。
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-main
 # 复核使用 CPU。传入正在跑的 screen-expand 作业号，会等待该作业收尾，再核验本轮和历史评分。
 # bash /home/work/aigc_video_research/wangjing/CODE/CUA-RL/AIS_ENTRY.txt screen-review 23560412
@@ -43,7 +43,7 @@ if (( $# )); then shift; fi
 
 case "$mode" in
     screen-main)
-        exec python3 -u "$project/scripts/ais_screen_queue.py" --followup --expand-main --after-review 23604025 "$@"
+        exec python3 -u "$project/scripts/ais_screen_queue.py" --followup --expand-main --after-review 23622081 "$@"
         ;;
     screen-followup)
         exec python3 -u "$project/scripts/ais_screen_queue.py" --followup "$@"

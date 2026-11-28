@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from ais_full_screen_pool import extend, load_inventory
-from ais_screen_after import full_pool_source, ready, sampling_history
+from ais_screen_after import full_pool_source, ready, sampling_history, skip_filled_retries
 from ais_screen_queue import QUOTAS, ROOT, ScreenQueue
 from ais_frontier_shards import read
 from ais_vm_check import save
@@ -49,6 +49,16 @@ class UpstreamDependencyTest(unittest.TestCase):
 
 
 class FullPoolTest(unittest.TestCase):
+    def test_main_followup_skips_only_filled_roles_without_a_weak_seed(self):
+        rows = [dict(task_index=i, role=role, seed_score=seed) for i, role, seed in
+                [('a', 'breadth', 1), ('b', 'breadth', None), ('c', 'breadth', 0),
+                 ('d', 'main', 0), ('e', 'component', 1)]]
+        decisions = [dict(task_index=r['task_index'], decision='retry_missing', missing_slots=2) for r in rows]
+        queue, saved = skip_filled_retries(rows, decisions, dict(breadth=64, main=49, component=63))
+        self.assertEqual([r['task_index'] for r in queue], ['c', 'd', 'e'])
+        self.assertEqual(saved, 4)
+        self.assertEqual([d['decision'] for d in decisions].count('quota_met_after_cpu'), 2)
+
     def test_pinned_inventory_partitions_official_training_split(self):
         train = read(ROOT / 'configs/research-splits/train-indices.json')
         data = load_inventory(train, read(ROOT / 'configs/sources.lock.json')['training_data']['revision'])

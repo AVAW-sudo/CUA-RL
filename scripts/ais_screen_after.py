@@ -67,6 +67,19 @@ def sampling_history(upstream, job):
     return sorted(attempts, key=lambda p: int(p.name), reverse=True) + [upstream]
 
 
+def skip_filled_retries(queue, decisions, counts):
+    # Keep weak seeds available for a later main-skill review.
+    skip = {row['task_index'] for row in queue if row['role'] != 'main'
+            and counts[row['role']] >= QUOTAS[row['role']]
+            and (row['seed_score'] is None or row['seed_score'] >= 1)}
+    saved_slots = 0
+    for decision in decisions:
+        if decision['task_index'] in skip and decision['decision'] == 'retry_missing':
+            decision['decision'] = 'quota_met_after_cpu'
+            saved_slots += decision['missing_slots']
+    return [row for row in queue if row['task_index'] not in skip], saved_slots
+
+
 def prepare(out, upstream, *, full_pool=False, expand_main=False):
     source = read_rank_status(upstream / 'summary.json')
     campaign = read_rank_status(upstream / 'campaign.json')
@@ -219,15 +232,21 @@ def prepare(out, upstream, *, full_pool=False, expand_main=False):
             else:
                 verdict = 'outside_reward_criteria'
         decisions.append(dict(decision, decision=verdict))
-    if expand_main and not campaign.get('expand_main') and counts['main'] < QUOTAS['main']:
+    if expand_main and counts['main'] < QUOTAS['main']:
         used_prompts = prompts | {normalized(r['prompt']) for r in queue}
         for r in hard_reserve:
             i = r['task_index']
-            if i in admitted or i in roster or i in pending or normalized(r['prompt']) in used_prompts:
+            if i in prior_ids or i in admitted or i in roster or i in pending or normalized(r['prompt']) in used_prompts:
                 continue
             app = domains[i]
             task = verified_json(tasks / app / (i.removeprefix(app + '_') + '.json'), r['sha256'])
             raw = historical_rewards(r)
+            if i in cases:
+                case = cases[i]
+                if (case['task_sha256'] != r['sha256'] or case.get('role', 'main') != 'main'
+                        or case['skill'] != r['reviewed_skill']
+                        or score_cases(worker, case, task['evaluator']) != r['offline_controls']):
+                    raise ValueError(f'Supplemental judge controls changed: {i}')
             if (task['instruction'] != r['prompt'] or normalized(r['prompt']) in heldout_prompts
                     or r['seed_score'] is None or r['seed_score'] >= 1 or 1 in raw
                     or not r['reviewed_skill'] or not controls_pass(r['offline_controls'])):
@@ -237,11 +256,14 @@ def prepare(out, upstream, *, full_pool=False, expand_main=False):
             decisions.append(dict(task_index=i, role='main', decision='additional_four', missing_slots=0))
             used_prompts.add(normalized(r['prompt']))
             slots += 4
+    if expand_main:
+        queue, saved_slots = skip_filled_retries(queue, decisions, counts)
+        slots -= saved_slots
     queue.sort(key=lambda r: (r['role'] != 'main', not r.get('reviewed_skill')))
     retry_tasks = sum(d['decision'] == 'retry_missing' for d in decisions)
     pool_report = dict(retry_tasks=retry_tasks, missing_trials=sum(d['missing_slots'] for d in decisions if d['decision'] == 'retry_missing'))
     if expand_main:
-        pool_report.update(archive_added=sum(added_by_role.values()), archive_added_by_review_role=dict(added_by_role),
+        pool_report.update(skipped_retry_slots=saved_slots, archive_added=sum(added_by_role.values()), archive_added_by_review_role=dict(added_by_role),
                            main_additional_four=sum(d['decision'] == 'additional_four' for d in decisions))
         priorities = []
         for row in carry:

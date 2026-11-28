@@ -3,10 +3,13 @@ import __future__
 import ast
 from collections import Counter
 from contextlib import redirect_stdout
+import functools
 from functools import lru_cache
 import hashlib
 import io
 import json
+import logging
+import operator
 import os
 from pathlib import Path
 import re
@@ -33,24 +36,36 @@ def verified_json(path, checksum):
 
 
 @lru_cache(maxsize=16)
-def functions_in_module(path, checksum):
+def judge_declarations(path, checksum):
     # Load just the pinned scoring functions. The full upstream modules import GUI and GPU dependencies.
     raw = path.read_bytes()
     if hashlib.sha256(raw).hexdigest() != checksum:
         raise ValueError(f'Judge checksum mismatch: {path}')
-    return {fn.name: fn for fn in ast.parse(raw).body if isinstance(fn, ast.FunctionDef)}
+    declarations = {}
+    for node in ast.parse(raw).body:
+        if isinstance(node, ast.FunctionDef):
+            declarations[node.name] = node
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            declarations[node.target.id] = node
+    return declarations
 
 
-def judge_function(path, checksum, name):
-    fn = functions_in_module(path, checksum)[name]
-    ns = {'re': re, 'json': json}
-    module = ast.Module(body=[fn], type_ignores=[])
+def judge_function(path, checksum, name, *, helper_sha256=None):
+    declarations = judge_declarations(path, checksum)
+    body = [declarations[name]]
+    ns = dict(re=re, json=json, functools=functools, operator=operator, logger=logging.getLogger(__name__))
+    if name == 'check_thunderbird_prefs':
+        # This official judge parses prefs.js with its module's regex and a shared rule matcher.
+        ns['_match_pref'] = judge_function(path.with_name('utils.py'), helper_sha256, '_match_value_to_rule')
+        body.insert(0, declarations['_pref_pattern'])
+    module = ast.Module(body=body, type_ignores=[])
     exec(compile(module, str(path), 'exec', flags=__future__.annotations.compiler_flag), ns)
     return ns[name]
 
 
 def score_cases(worker, case, evaluator):
-    score = judge_function(worker / case['module'], case['module_sha256'], evaluator['func'])
+    score = judge_function(worker / case['module'], case['module_sha256'], evaluator['func'],
+                           helper_sha256=case.get('helper_sha256'))
     get_state = None
     if 'getter_module' in case:
         get_state = judge_function(worker / case['getter_module'], case['getter_sha256'],
@@ -59,7 +74,10 @@ def score_cases(worker, case, evaluator):
     with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         for label, state in case['inputs'].items():
             if get_state is not None:
-                files = {case['path']: state.encode()}
+                if case.get('input_format') == 'text_files':
+                    files = {path: content.encode() for path, content in state.items()}
+                else:
+                    files = {case['path']: state.encode()}
                 desktop = SimpleNamespace(controller=SimpleNamespace(get_file=files.get))
                 state = get_state(desktop, evaluator['result'])
             elif case.get('input_format') == 'text_file':

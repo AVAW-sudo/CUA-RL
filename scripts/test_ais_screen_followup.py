@@ -11,6 +11,48 @@ from overnight_prompts import write_lines
 
 
 class FollowupTest(unittest.TestCase):
+    def test_preferences_judge_checks_the_shared_matcher_checksum(self):
+        with tempfile.TemporaryDirectory() as temp:
+            worker = Path(temp)
+            prefs = worker / 'thunderbird.py'
+            prefs.write_text(
+                '_pref_pattern: str = re.compile(r"enabled=(.+)")\n'
+                'def check_thunderbird_prefs(path, rules):\n'
+                '    with open(path) as file:\n'
+                '        match = _pref_pattern.fullmatch(file.read())\n'
+                '    return float(bool(match) and _match_pref(match.group(1), rules))\n')
+            helper = worker / 'utils.py'
+            helper.write_text('def _match_value_to_rule(value, rule):\n'
+                              '    return operator.eq(value, rule["ref"])\n')
+            case = dict(module=prefs.name, module_sha256=hashlib.sha256(prefs.read_bytes()).hexdigest(),
+                        helper_sha256=hashlib.sha256(helper.read_bytes()).hexdigest(), input_format='text_file',
+                        inputs={'untouched': '', 'correct': 'enabled=yes', 'disabled': 'enabled=no'})
+            evaluator = dict(func='check_thunderbird_prefs', expected={'rules': {'ref': 'yes'}})
+            self.assertEqual(screen.score_cases(worker, case, evaluator),
+                             {'untouched': 0, 'correct': 1, 'disabled': 0})
+            case['helper_sha256'] = 'stale'
+            with self.assertRaisesRegex(ValueError, 'checksum'):
+                screen.score_cases(worker, case, evaluator)
+
+    def test_multi_file_judge_controls_use_each_requested_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            worker = Path(temp)
+            module = worker / 'judge.py'
+            module.write_text(
+                'def get_pair(env, config):\n'
+                '    return [env.controller.get_file(p) for p in config["paths"]]\n'
+                'def match(state, rules):\n'
+                '    return float(state == [b"one", b"two"])\n')
+            checksum = hashlib.sha256(module.read_bytes()).hexdigest()
+            case = dict(module=module.name, module_sha256=checksum,
+                        getter_module=module.name, getter_sha256=checksum, input_format='text_files',
+                        inputs={'untouched': {}, 'correct': {'/a': 'one', '/b': 'two'},
+                                'wrong_path': {'/a': 'one', '/other': 'two'}})
+            evaluator = dict(func='match', result={'type': 'pair', 'paths': ['/a', '/b']},
+                             expected={'rules': {}})
+            self.assertEqual(screen.score_cases(worker, case, evaluator),
+                             {'untouched': 0, 'correct': 1, 'wrong_path': 0})
+
     def test_cpu_builds_queue_and_checks_frozen_history_without_old_jobs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
