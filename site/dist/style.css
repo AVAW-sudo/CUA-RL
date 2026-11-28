@@ -425,3 +425,33 @@ details.more[open]>summary::before{transform:rotate(45deg)}
   .scorebar{grid-template-columns:88px minmax(0,1fr) 54px;font-size:13px}
   .mark-label{font-size:11px;padding:3px 6px}
 }
+
+/* ---------- v5：开源调研与建议 ---------- */
+.eco{max-width:var(--page);margin:24px auto 0;display:grid;gap:12px}
+.eco-row{display:grid;grid-template-columns:118px minmax(0,1fr);gap:12px;align-items:start}
+.eco-row>span{font:600 14px/1.35 var(--sans);text-align:right;padding-top:7px}
+.eco-chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipx{display:inline-flex;flex-direction:column;padding:5px 10px;border-radius:6px;font-size:13px;line-height:1.3;border:1px solid transparent;min-width:0}
+.chipx b{font-weight:600;color:var(--ink)}
+.chipx small{font-size:11.5px;color:var(--ink-3)}
+.chipx.g{background:var(--ok-wash);border-color:#bfe3cd}
+.chipx.a{background:var(--amber-wash);border-color:#f3d39a}
+.chipx.o{background:var(--panel);border-color:var(--rule)}
+.chipx.gap{background:var(--paper);border:1.5px dashed var(--no)}
+.chipx.gap b{color:var(--no)}
+.eco-legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:12px auto 0;max-width:var(--page);padding-left:130px;font-size:13px;color:var(--ink-2)}
+.eco-legend span{display:inline-flex;align-items:center;gap:6px}
+.eco-legend i{display:inline-block;width:14px;height:12px;border-radius:3px}
+.ofig img{display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:6px;background:#fff}
+.ofig figcaption small{display:block;margin-top:4px;color:var(--ink-3);font-size:12.5px}
+.recs{counter-reset:r;list-style:none;margin:22px auto 0;padding:0;max-width:var(--text)}
+.recs li{position:relative;padding:14px 0 14px 46px;border-bottom:1px solid var(--rule)}
+.recs li::before{counter-increment:r;content:counter(r);position:absolute;left:0;top:14px;width:30px;height:30px;border-radius:8px;background:var(--ours);color:#fff;font:600 15px/30px var(--sans);text-align:center}
+.recs li.top::before{background:var(--amber);color:var(--ink)}
+.recs h5{margin:0 0 4px;font:600 16px/1.4 var(--sans)}
+.recs p{margin:0;font-size:15px;color:var(--ink-2)}
+@media (max-width:560px){
+  .eco-row{grid-template-columns:minmax(0,1fr)}
+  .eco-row>span{text-align:left;padding-top:0}
+  .eco-legend{padding-left:0}
+}

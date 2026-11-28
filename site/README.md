@@ -22,6 +22,8 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory site/dist
 | 训练与排班 | `run` | 一次更新的八步、时间分布、卡位分配、实验顺序 0–6、GRPO 时长、已跑作业 | README；`docs/2026-11-27-桌面强化学习筛题与实验排期.md`；`AIS_ENTRY.txt` |
 | 下一步 | `next` | critic 的定义与 value 曲线示意、五种方法、信号分配示意图、真实续跑示意 | 排期文档 |
 | 结论 | `conclude` | 八条已确定的结论，链回各节 | 同上各处 |
+| 开源项目调研 | `landscape` | 四层生态地图（按最近推送着色）、逐项目的长处和不足、三张官方图 | 2026-11-28 的 GitHub 搜索与各仓库 README；图片见 `dist/media/oss/` |
+| 我们的判断与建议 | `proposal` | 五个判断、“可以分叉的桌面状态”切入点示意、按优先级的五条建议 | 同上 |
 
 每节末尾有一到两个引用块：“暴论”是一句判断，“本质”是一句机制分析。
 
@@ -45,5 +47,7 @@ node site/authoring/qa/check-site.cjs
 可用 `PLAYWRIGHT_MODULE` 指向 playwright 或 playwright-core，用 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指向本机 Chrome，用 `CUA_SITE_PREVIEW_URL` 换预览地址。
 
 当前的私有预览：<https://claude.ai/artifact/2SWDWoc7cLfFhDPVDANvhC>。
+
+`dist/media/oss/` 里的三张官方图分别来自 Purewhiter/mobilegym、ZJU-REAL/ClawGUI、langfengQ/verl-agent，三个仓库都是 Apache-2.0，页面图注里写明了出处。生态地图里的星数和最近推送日期取自 2026-11-28，更新时重新查一次。
 
 字体 Newsreader、Source Sans 3、IBM Plex Mono 内嵌在 `dist/fonts/paper-fonts.css`，均为 SIL Open Font License 1.1；中文标题用 Google Fonts 的 Noto Serif SC，离线时退回系统字体。

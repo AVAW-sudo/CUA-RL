@@ -20,7 +20,7 @@
 <header class="topbar"><div class="topbar-in">
   <a class="mark" href="#top">RL for CUA-Agent</a>
   <nav class="toplinks" aria-label="章节">
-    <a href="#bench">看板</a><a href="#walk">一道题</a><a href="#grader">评分器</a><a href="#grpo">GRPO</a><a href="#scalecua">SCALE-CUA</a><a href="#cualite">CUA-Lite</a><a href="#data">数据</a><a href="#run">训练与排班</a><a href="#next">下一步</a><a href="#conclude">结论</a>
+    <a href="#bench">看板</a><a href="#walk">一道题</a><a href="#grader">评分器</a><a href="#grpo">GRPO</a><a href="#scalecua">SCALE-CUA</a><a href="#cualite">CUA-Lite</a><a href="#data">数据</a><a href="#run">训练与排班</a><a href="#next">下一步</a><a href="#conclude">结论</a><a href="#landscape">开源调研</a><a href="#proposal">建议</a>
   </nav>
 </div></header>
 
@@ -649,6 +649,109 @@ print('artist=' + (f['artist'][0] if 'artist' in f else ''))</pre>
   </ol>
 </section>
 
+<!-- ============ 11 开源调研 ============ -->
+<section class="sec wrap" id="landscape">
+  <h2>开源项目调研</h2>
+  <div class="text lead2">
+    <p>11 月 28 日，我们在 GitHub 上用“computer use agent RL”“GUI agent RL”“OSWorld”等关键词搜到 189 个仓库，又单独查了论文里提到的几十个项目。大部分仓库是 agent 应用，比如 browser-use 和各种桌面助手，它们调用现成的模型，不做训练。和我们直接相关的分四层：环境与沙箱、题目与评分器、训练框架、端到端的 CUA 训练项目。</p>
+    <p>判断是否“仍在维护”，看最近一次推送代码的时间：一个月内算活跃，一到六个月算放缓，超过六个月算停更。星数和日期都取自 11 月 28 日。</p>
+  </div>
+  <div class="eco">
+    <div class="eco-row"><span>环境与沙箱</span><div class="eco-chips">
+      <span class="chipx g"><b>OSWorld</b><small>3.3K · 11-23</small></span><span class="chipx g"><b>OSWorld-V2</b><small>440 · 11-13</small></span><span class="chipx g"><b>trycua/cua</b><small>33K · 11-28</small></span><span class="chipx g"><b>celesto</b><small>2.1K · 11-28</small></span><span class="chipx g"><b>MobileGym（手机）</b><small>877 · 11-16</small></span>
+      <span class="chipx gap"><b>桌面任务中途存档 / 分叉</b><small>没找到开源实现</small></span>
+    </div></div>
+    <div class="eco-row"><span>题目与评分器</span><div class="eco-chips">
+      <span class="chipx a"><b>CUA-Gym</b><small>230 · 08-13</small></span><span class="chipx a"><b>Fara · CUAVerifierBench</b><small>6.3K · 09-22</small></span><span class="chipx a"><b>SCALE-CUA · VeriGen</b><small>79 · 08-03</small></span>
+      <span class="chipx gap"><b>“关键字段改错”的反例检查</b><small>还不是标准流程</small></span>
+    </div></div>
+    <div class="eco-row"><span>训练框架</span><div class="eco-chips">
+      <span class="chipx g"><b>verl</b><small>24K · 11-28</small></span><span class="chipx g"><b>agent-lightning</b><small>19K · 11-26</small></span><span class="chipx g"><b>AReaL</b><small>5.9K · 11-28</small></span><span class="chipx g"><b>rLLM</b><small>5.9K · 11-25</small></span><span class="chipx g"><b>ROLL</b><small>3.5K · 11-28</small></span><span class="chipx g"><b>SkyRL</b><small>2.6K · 11-28</small></span><span class="chipx g"><b>NeMo RL</b><small>2.2K · 11-28</small></span><span class="chipx g"><b>VAGEN</b><small>528 · 11-28</small></span><span class="chipx a"><b>verl-agent · GiGPO</b><small>2.5K · 06-09</small></span>
+      <span class="chipx gap"><b>桌面上的按步 credit</b><small>只在手机和文字环境上有</small></span>
+    </div></div>
+    <div class="eco-row"><span>端到端 CUA</span><div class="eco-chips">
+      <span class="chipx g"><b>CUA-Lite</b><small>135 · 11-10</small></span><span class="chipx a"><b>DART-GUI</b><small>99 · 10-25</small></span><span class="chipx a"><b>SCALE-CUA</b><small>79 · 08-03</small></span><span class="chipx a"><b>ClawGUI（手机）</b><small>1.4K · 06-03</small></span><span class="chipx o"><b>EvoCUA</b><small>354 · 03-31 · 只有模型</small></span><span class="chipx o"><b>AgentRL</b><small>368 · 01-17</small></span><span class="chipx o"><b>ComputerRL</b><small>45 · 2025-11</small></span><span class="chipx o"><b>ZeroGUI</b><small>121 · 2025-07</small></span><span class="chipx o"><b>ARPO</b><small>164 · 2025-05</small></span>
+    </div></div>
+  </div>
+  <div class="eco-legend"><span><i style="background:var(--ok-wash);border:1px solid #bfe3cd"></i>一个月内有更新</span><span><i style="background:var(--amber-wash);border:1px solid #f3d39a"></i>一到六个月</span><span><i style="background:var(--panel);border:1px solid var(--rule)"></i>超过六个月</span><span><i style="border:1.5px dashed var(--no)"></i>我们没找到的东西</span><span>小字：星数 · 最近一次推送</span></div>
+
+  <h3 class="sub3">逐个看：做得好的，和对我们来说缺的</h3>
+  <div class="table-wrap"><table class="num wide">
+    <thead><tr><th class="l">项目</th><th class="l">做得好的</th><th class="l">对我们来说缺的</th></tr></thead>
+    <tbody>
+      <tr class="cat"><td colspan="3">端到端 CUA 训练</td></tr>
+      <tr><td><a href="https://github.com/THUDM/SCALE-CUA" target="_blank" rel="noopener">SCALE-CUA</a></td><td>造题（VeriGen）、在线 RL、评测一条龙；OSWorld 67.7</td><td>8 月后没有更新；公开代码缺 anthropic_rl 模块（我们复现时发现）；训练信号是整条轨迹的终局分；默认配置按 600 台虚拟机设计</td></tr>
+      <tr><td><a href="https://github.com/cua-lite/cua-lite" target="_blank" rel="noopener">CUA-Lite</a></td><td>环境、数据格式、harness 统一；Docker 桌面，单节点 8 × A100 能跑；读的是同一批 2,049 道题</td><td>作者自己说训练评分器没有全审；桌面 RL 只验证了 LibreOffice；只有 GRPO</td></tr>
+      <tr><td><a href="https://github.com/Computer-use-agents/dart-gui" target="_blank" rel="noopener">DART-GUI</a></td><td>采样和训练解耦（GPU 机跑推理和训练，CPU 机跑桌面，MySQL 记录轨迹）；按难度调整数据</td><td>TODO 里写着还没合并到新版 verl；部署要额外的数据库和 CPU 机；整条轨迹的奖励</td></tr>
+      <tr><td><a href="https://github.com/ZJU-REAL/ClawGUI" target="_blank" rel="noopener">ClawGUI</a></td><td>训练、评测、部署全栈；用 GiGPO 加过程奖励（PRM）给每一步打分；支持真机训练和崩溃恢复</td><td>只做手机；近半年没有推送；过程奖励部分依赖 MLLM judge</td></tr>
+      <tr><td><a href="https://github.com/meituan/EvoCUA" target="_blank" rel="noopener">EvoCUA</a></td><td>1 月时 OSWorld 开源模型第一（32B，56.7）</td><td>只发布模型和评测代码，没有训练代码</td></tr>
+      <tr class="cat"><td colspan="3">题目与评分器</td></tr>
+      <tr><td><a href="https://github.com/xlang-ai/CUA-Gym" target="_blank" rel="noopener">CUA-Gym</a></td><td>自动生成 32,112 组“任务 + 初始环境 + 评分器”，覆盖 16 个桌面应用和 94 个模拟网页应用；写评分器的 agent 看不到生成环境的代码</td><td>评分器只要求“正确结果得 1、初始状态得 0”，再加 LLM 投票，没有“改错关键字段要扣分”的检查；训练出的模型还没发布</td></tr>
+      <tr><td><a href="https://github.com/microsoft/fara" target="_blank" rel="noopener">Fara</a></td><td>发布了 CUAVerifierBench：人工标注的、专门评“评分模型”准不准的基准</td><td>面向网页任务；评的是看轨迹打分的模型，不是程序评分器</td></tr>
+      <tr class="cat"><td colspan="3">训练框架</td></tr>
+      <tr><td><a href="https://github.com/langfengQ/verl-agent" target="_blank" rel="noopener">verl-agent</a></td><td>GiGPO：不同轨迹走到相同状态时，比较各自的动作；每一步单独构造输入；支持 Qwen3-VL</td><td>环境是 ALFWorld、WebShop、视觉小游戏；在桌面上，截图一样不代表打开的文件一样，“相同状态”难判断</td></tr>
+      <tr><td>AReaL · ROLL · rLLM · SkyRL · agent-lightning</td><td>全异步训练、多轮 agent、沙箱快照和预热池（rLLM）、不改 agent 代码直接训练（agent-lightning）；更新很勤</td><td>现成环境以文字、代码、终端、搜索为主，桌面 GUI 要自己接</td></tr>
+      <tr class="cat"><td colspan="3">环境与沙箱</td></tr>
+      <tr><td><a href="https://github.com/Purewhiter/mobilegym" target="_blank" rel="noopener">MobileGym</a></td><td>整个手机环境的状态是一份 JSON，可以快照、重置、分叉，还能对比前后差异、发现意外的副作用；评分全是程序判定</td><td>手机模拟器，桌面上没有对应物</td></tr>
+      <tr><td><a href="https://github.com/trycua/cua" target="_blank" rel="noopener">trycua/cua</a> · <a href="https://github.com/CelestoAI/celesto" target="_blank" rel="noopener">celesto</a></td><td>跨系统的桌面沙箱；celesto 的虚拟机约 0.5 秒启动，能保留状态</td><td>和 OSWorld 任务、评分器的兼容要自己验证</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="sub3">三张官方图</h3>
+  <figure class="fig ofig"><img src="media/oss/mobilegym-arch.webp" width="1600" height="978" alt="MobileGym 架构：环境状态是结构化 JSON，支持快照、重置、分叉和状态对比" loading="lazy">
+    <figcaption><b>MobileGym：手机环境的状态可以快照、重置、分叉。</b>右下角是整个环境的状态（JSON）和任务前后的差异。手机上能做到，是因为模拟器把应用数据都放进了一份 JSON。<small>来源：Purewhiter/mobilegym，Apache-2.0</small></figcaption></figure>
+  <figure class="fig ofig"><img src="media/oss/clawgui-rl.webp" width="1600" height="786" alt="ClawGUI-RL 架构：RL 训练器、环境管理器、并行环境、真机和模拟器、任务评估" loading="lazy">
+    <figcaption><b>ClawGUI-RL：在线 RL 的环境管理。</b>左边的环境管理器负责并行环境、健康检查、崩溃恢复和备用服务器轮换；右边的评分既有数据库、本地文件这类程序检查，也有 MLLM judge。<small>来源：ZJU-REAL/ClawGUI，Apache-2.0</small></figcaption></figure>
+  <figure class="fig ofig"><img src="media/oss/verl-agent-rollout.webp" width="1600" height="446" alt="verl-agent 与 RAGEN 的多轮 rollout 对比：verl-agent 每一步单独构造输入" loading="lazy">
+    <figcaption><b>verl-agent：每一步单独构造输入。</b>左边是把整段历史拼起来的做法，右边是 verl-agent：每一步的输入可以自定义，历史可以压成记忆。这和 SCALE-CUA 的 Visual Context Segmentation 解决的是同一个问题：轨迹太长。<small>来源：langfengQ/verl-agent，Apache-2.0</small></figcaption></figure>
+  <blockquote class="cite"><span>暴论</span><p>训练框架不缺，每周都有新版本。缺的是桌面这一端：能分叉的状态、靠得住的评分器、足够多的跨应用题。</p></blockquote>
+</section>
+
+<!-- ============ 12 判断与建议 ============ -->
+<section class="sec wrap" id="proposal">
+  <h2>我们的判断与建议</h2>
+  <div class="text lead2"><p>把调研和前面几节的实测放在一起，我们得出五个判断。</p></div>
+  <ol class="concl">
+    <li><b>训练框架已经够用。</b>verl、AReaL、ROLL、rLLM 这些框架都在活跃更新，异步、多轮、critic 都有现成实现。自己再写一套框架，不是我们的优势。</li>
+    <li><b>桌面 CUA 的端到端项目少，维护时间短。</b>SCALE-CUA 8 月后没更新，ARPO、ZeroGUI 从 2025 年年中起就没有推送，DART-GUI 还没跟上新版 verl。它们给模型的训练信号都是整条轨迹的终局分。</li>
+    <li><b>按步分配信号的开源实现都不在桌面上。</b>ClawGUI 的 GiGPO + 过程奖励在手机上，verl-agent 的 GiGPO 在文字和小游戏环境里。GiGPO 要判断两条轨迹是否到了“相同状态”，桌面上截图一样，打开的文件和选区可能不一样。</li>
+    <li><b>“能分叉的环境”已经在手机上出现，桌面上还空着。</b>MobileGym 能快照、重置、分叉整个手机状态；rLLM、celesto 在沙箱上做了快照和快速启动。桌面任务做到一半存档再分叉，我们没找到开源实现；ENVS 论文用子虚拟机重放此前操作来分支，没有公开代码。</li>
+    <li><b>评分器质量开始被重视，但检查方向不全。</b>CUA-Gym 检查“正确结果得 1、初始状态得 0”，Fara 检查“看轨迹打分的模型准不准”。“把关键字段改错，评分器会不会扣分”还不是标准流程，而我们首批 32 道里有 17 道没扣分。</li>
+  </ol>
+  <blockquote class="cite ess"><span>本质</span><p>手机上能分叉，是因为 MobileGym 把应用状态写成了一份 JSON。桌面的状态散在内存、磁盘、应用进程和窗口里，只能靠虚拟机快照整体保存。难点在这里，空白也在这里。</p></blockquote>
+
+  <h3 class="sub3">切入点：可以分叉的桌面状态</h3>
+  <div class="text"><p>我们建议把“任务做到一半，把整个桌面存档，之后能恢复、能复制成几份同时往下做”做成核心基建。存档要包括虚拟机的内存、设备和磁盘，加上模型的操作记录和剩余步数。它一样东西能同时支撑三件事：</p></div>
+  <figure class="fig">
+    <div class="scroller"><svg class="fsvg" viewBox="0 0 1000 330" role="img" aria-label="可分叉的桌面状态支撑三件事：真实续跑校正 critic、给 GiGPO 提供真正相同的状态、在同一状态换动作做失败诊断；评分器反例检查决定哪些题能进训练；训练框架复用现成实现">
+      <rect x="330" y="20" width="340" height="86" rx="12" fill="#fdf4e2" stroke="#f0a30a" stroke-width="2"/>
+      <text x="500" y="54" text-anchor="middle" font-size="18" font-weight="600" fill="#141a29">可以分叉的桌面状态</text>
+      <text x="500" y="80" text-anchor="middle" font-size="13.5" fill="#4b5468">中途存档 · 恢复 · 复制成 K 份同时往下做</text>
+      <g fill="none" stroke="#f0a30a" stroke-width="2"><path d="M420 106C420 140 170 130 170 162" marker-end="url(#ar)"/><path d="M500 106V162" marker-end="url(#ar)"/><path d="M580 106C580 140 830 130 830 162" marker-end="url(#ar)"/></g>
+      <g fill="#fff" stroke="#d5d9e1"><rect x="20" y="166" width="300" height="104" rx="10"/><rect x="350" y="166" width="300" height="104" rx="10"/><rect x="680" y="166" width="300" height="104" rx="10"/></g>
+      <g font-size="15" font-weight="600" fill="#141a29"><text x="36" y="194">真实续跑校正 critic</text><text x="366" y="194">真正相同的中间状态</text><text x="696" y="194">同一状态换动作</text></g>
+      <g font-size="13" fill="#4b5468">
+        <text x="36" y="218">从存档处续跑 2–4 次，平均分是</text><text x="36" y="238">value 的实测值，用来训练 critic</text><text x="36" y="258" fill="#1b5fb3">→ Turn-PPO（排期第 5 项）</text>
+        <text x="366" y="218">从同一份存档出发的几条轨迹，</text><text x="366" y="238">不用靠截图相似度判断是否同一状态</text><text x="366" y="258" fill="#1b5fb3">→ GiGPO 分组（排期第 4 项）</text>
+        <text x="696" y="218">在岔路口换一个动作再做，</text><text x="696" y="238">看分数变不变，定位哪一步出错</text><text x="696" y="258" fill="#1b5fb3">→ 失败诊断和岔路口数据</text>
+      </g>
+      <rect x="20" y="290" width="470" height="34" rx="8" fill="#eef4fc"/><text x="36" y="312" font-size="13.5" fill="#1b5fb3"><tspan font-weight="600">评分器反例检查</tspan>：决定哪些题的分数可信，能进训练</text>
+      <rect x="510" y="290" width="470" height="34" rx="8" fill="#f3f4f7"/><text x="526" y="312" font-size="13.5" fill="#4b5468"><tspan font-weight="600" fill="#141a29">训练框架复用</tspan>：AgentRL 复现，verl-agent / ROLL 的 GiGPO</text>
+    </svg></div>
+    <figcaption><b>我们的切入点（示意）。</b>上面一层是要新做的基建，中间三项是它支撑的用法，底下两条是配套：一条要做好，一条直接复用。</figcaption>
+  </figure>
+
+  <h3 class="sub3">建议，按优先级</h3>
+  <ol class="recs">
+    <li class="top"><h5>先验收“任务中途存档”能不能用</h5><p>在本地 Calc、Writer 题上，测恢复以后选区、未保存的修改、窗口是否都在，恢复一次要多久，同一份存档能不能同时开几份。这一步不过，后面的续跑和分叉都要改方案。它不占 GPU，可以和原版 GRPO 并行。</p></li>
+    <li class="top"><h5>把评分器反例检查做成收题的必经一步，并公开放过率</h5><p>每道题自动生成“关键字段改错”的产物，统计评分器放过了多少。它和 CUA-Gym 的“正确 1、初始 0”、Fara 的 CUAVerifierBench 查的是不同的错，可以互补。</p></li>
+    <li><h5>训练侧不造轮子</h5><p>原版先用 SCALE-CUA 的 AgentRL 复现；GiGPO 直接用 verl-agent 或 ROLL 的实现；异步采样参考 AReaL 和 ROLL Flash。人力放在环境和训练信号上。</p></li>
+    <li><h5>补跨应用题</h5><p>公开题库里跨应用题只占 7%。可以借 CUA-Gym 的做法（一个 agent 造环境，另一个看不到环境代码的 agent 写评分器），专门生成“从 A 应用取值，写进 B 应用指定位置”的题，评分器逐个字段核对。</p></li>
+    <li><h5>分两条环境路线</h5><p>RL 主路径评估 CUA-Lite 的 Docker 桌面（同一批 2,049 道题，文件哈希一致）和 celesto 这类快速启动的虚拟机，降低每条轨迹的成本；需要完整快照的分叉实验保留 QEMU。</p></li>
+  </ol>
+  <blockquote class="cite"><span>暴论</span><p>别人在比谁的训练框架更快，我们比谁的桌面能分叉、谁的评分器不说谎。这两样做成了，算法上的改动才有地方落脚。</p></blockquote>
+</section>
+
 <!-- ============ 参考 ============ -->
 <section class="sec wrap" id="refs">
   <h2>参考</h2>
@@ -661,6 +764,10 @@ print('artist=' + (f['artist'][0] if 'artist' in f else ''))</pre>
     <li><a href="https://arxiv.org/abs/2410.01679" target="_blank" rel="noopener">VinePPO</a>用真实续跑估计中间状态的价值。</li>
     <li><a href="https://arxiv.org/abs/2610.35801" target="_blank" rel="noopener">FOCUS</a>按能减少的估值误差选择续跑位置。</li>
     <li><a href="https://arxiv.org/html/2611.18397v1#S4" target="_blank" rel="noopener">Gamer（TA-GRPO）</a>按段比较、段内靠后加权。</li>
+    <li><a href="https://github.com/xlang-ai/CUA-Gym" target="_blank" rel="noopener">CUA-Gym</a>自动生成可验证的 CUA 训练题。</li>
+    <li><a href="https://github.com/Purewhiter/mobilegym" target="_blank" rel="noopener">MobileGym</a>状态可快照、重置、分叉的手机模拟环境。</li>
+    <li><a href="https://github.com/ZJU-REAL/ClawGUI" target="_blank" rel="noopener">ClawGUI</a>手机 GUI agent 的训练、评测、部署框架。</li>
+    <li><a href="https://github.com/microsoft/fara" target="_blank" rel="noopener">Fara</a>CUA 模型与评分模型基准 CUAVerifierBench。</li>
   </ul>
 </section>
 

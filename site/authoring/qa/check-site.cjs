@@ -18,12 +18,16 @@ const shots = mkdtempSync(join(tmpdir(), 'cua-site-'));
     page.on('response', r => { if (r.status() >= 400) errors.push(r.status() + ' ' + r.url()); });
     await page.goto(preview, {waitUntil: 'networkidle'});
 
-    for (const id of ['bench', 'walk', 'grader', 'grpo', 'scalecua', 'cualite', 'data', 'run', 'next', 'conclude'])
+    for (const id of ['bench', 'walk', 'grader', 'grpo', 'scalecua', 'cualite', 'data', 'run', 'next', 'conclude', 'landscape', 'proposal'])
       assert(await page.locator('#' + id).count(), 'missing section #' + id);
     assert.equal(await page.locator('#actStrips .scells').first().locator('i').count(), 46, 'action strip of trial 4');
     assert.equal(await page.locator('#advStrips .scells').nth(1).locator('i').count(), 50, 'advantage strip of trial 1');
     assert(await page.locator('#vcurve rect').count() >= 46, 'value curve not drawn');
     assert(await page.locator('#creditMap rect').count() > 100, 'credit map not drawn');
+    for (const img of await page.locator('#landscape img').all()) {
+      await img.scrollIntoViewIfNeeded();
+      assert(await img.evaluate(el => el.complete ? el.naturalWidth === 1600 : new Promise(r => { el.onload = () => r(el.naturalWidth === 1600); el.onerror = () => r(false); })), 'official figure did not load');
+    }
     for (const src of ['media/walk/mp3-t4-start.webp', 'media/walk/mp3-t4-step2.webp'])
       assert(await page.locator(`img[src="${src}"]`).evaluate(el => el.complete && el.naturalWidth === 1280), src);
 
@@ -57,6 +61,6 @@ const shots = mkdtempSync(join(tmpdir(), 'cua-site-'));
     await page.screenshot({path: join(shots, 'phone.jpg'), type: 'jpeg', quality: 80});
 
     assert.deepEqual(errors, []);
-    console.log('通过：10 个章节、动作条与整屏截图、value 曲线、信号分配图、Case 切换、回放子页、手机宽度、资源加载。截图在', shots);
+    console.log('通过：12 个章节、三张官方图、动作条与整屏截图、value 曲线、信号分配图、Case 切换、回放子页、手机宽度、资源加载。截图在', shots);
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
