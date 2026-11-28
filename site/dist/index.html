@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="RL for CUA-Agent：从 ScaleCUA Qwen3-VL-8B SFT 出发做桌面 RL。SFT 与 RL 看板、概念图解、SCALE-CUA 和 CUA-Lite 拆解、数据与 RL 过程、关键 case、排班表和 RL insight。内部路线预演。">
+<title>RL for CUA-Agent</title>
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600&display=swap">
+<link rel="stylesheet" href="fonts/paper-fonts.css"><link rel="stylesheet" href="style.css">
+<script defer src="app.js"></script>
+</head>
+<body>
+
+<svg class="defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7a8295"/></marker>
+  <marker id="arb" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#2a78d6"/></marker>
+</defs></svg>
+
+<header class="topbar"><div class="topbar-in">
+  <a class="mark" href="#top">RL for CUA-Agent</a>
+  <nav class="toplinks" aria-label="章节">
+    <a href="#bench">看板</a><a href="#concepts">概念</a><a href="#scalecua">SCALE-CUA</a><a href="#cualite">CUA-Lite</a><a href="#data">数据</a><a href="#rl">RL 过程</a><a href="#case">Case</a><a href="#schedule">排班</a><a href="#insight">Insight</a><a href="#next">下一步</a>
+  </nav>
+</div></header>
+
+<main id="top">
+
+<header class="head wrap">
+  <h1><span class="name">RL for CUA-Agent</span><span class="sub">从 SFT 基线到桌面 RL：复现、拆解与排班</span></h1>
+  <p class="anon">CUA-RL 团队 · 内部路线预演 · 2026 年 11 月</p>
+  <div class="links">
+    <a class="btn" href="https://github.com/AVAW-sudo/CUA-RL/tree/feat/ais-distributed-grpo" target="_blank" rel="noopener">代码</a>
+    <a class="btn" href="https://github.com/AVAW-sudo/CUA-RL/blob/feat/ais-distributed-grpo/docs/CUA-RL%20Dataset%20OnePage.md" target="_blank" rel="noopener">数据 OnePage</a>
+    <a class="btn" href="https://github.com/AVAW-sudo/CUA-RL/blob/feat/ais-distributed-grpo/rethinking/2026-11-27_Ideation.md" target="_blank" rel="noopener">讨论记录</a>
+    <a class="btn ghost" href="https://arxiv.org/html/2607.11185" target="_blank" rel="noopener">SCALE-CUA</a>
+    <a class="btn ghost" href="https://arxiv.org/html/2610.26071v1" target="_blank" rel="noopener">CUA-Lite</a>
+  </div>
+  <div class="phase"><span class="chip done">SFT 基线已测完</span><span class="chip run">数据筛选进行中</span><span class="chip queue">原版 GRPO 待开跑</span><span class="chip plan">算法改动排在后面</span></div>
+</header>
+
+<!-- ============ DASHBOARD ============ -->
+<section class="sec wrap" id="bench">
+  <h2>看板</h2>
+  <p class="text center-text">起点是官方发布的 <b>ScaleCUA Qwen3-VL-8B OSWorld SFT</b>。我们在自己的 8 × A100 环境里重测了它，再和论文的 RL 结果放在一起。</p>
+  <div class="stats">
+    <div class="stat"><p class="stat-what">OSWorld · SFT 起点</p><p class="stat-num">44.32<small>%</small></p><p class="stat-label">358 / 361 道有分，154 道满分</p></div>
+    <div class="stat"><p class="stat-what">跨应用题 · SFT</p><p class="stat-num">16.30<small>%</small></p><p class="stat-label">各类别最低；论文 RL 后 45.2%</p></div>
+    <div class="stat amber"><p class="stat-what">RL 训练题 · 已严核</p><p class="stat-num">144<small> / 256</small></p><p class="stat-label">截至 11 月 27 日 16:28（北京时间）</p></div>
+    <div class="stat amber"><p class="stat-what">原版 GRPO · 正式更新</p><p class="stat-num">0<small> / 25</small></p><p class="stat-label">在线 smoke 已完成一次非零梯度更新</p></div>
+  </div>
+
+  <div class="block">
+    <h3>SFT Bench</h3>
+    <p class="text center-text">每题一次，最多 50 步，1280×720 截图，温度 0.8，TCG 软件虚拟化。</p>
+    <div class="pair">
+      <div class="table-wrap tight"><table class="num">
+        <caption><b>OSWorld 各类别（%）</b></caption>
+        <thead><tr><th class="l">类别</th><th>已评分</th><th class="l">均分</th></tr></thead>
+        <tbody>
+          <tr><td>跨应用 multi_apps</td><td>92 / 93</td><td class="bar lo" style="--v:16.30"><span>16.30</span></td></tr>
+          <tr><td>LibreOffice Calc</td><td>47 / 47</td><td class="bar" style="--v:38.30"><span>38.30</span></td></tr>
+          <tr><td>VS Code</td><td>22 / 23</td><td class="bar" style="--v:50.00"><span>50.00</span></td></tr>
+          <tr><td>LibreOffice Impress</td><td>47 / 47</td><td class="bar" style="--v:50.86"><span>50.86</span></td></tr>
+          <tr><td>Chrome</td><td>45 / 46</td><td class="bar" style="--v:53.24"><span>53.24</span></td></tr>
+          <tr><td>Thunderbird</td><td>15 / 15</td><td class="bar" style="--v:53.33"><span>53.33</span></td></tr>
+          <tr><td>GIMP</td><td>26 / 26</td><td class="bar" style="--v:53.85"><span>53.85</span></td></tr>
+          <tr><td>LibreOffice Writer</td><td>23 / 23</td><td class="bar" style="--v:65.21"><span>65.21</span></td></tr>
+          <tr><td>操作系统 OS</td><td>24 / 24</td><td class="bar" style="--v:66.67"><span>66.67</span></td></tr>
+          <tr><td>VLC</td><td>17 / 17</td><td class="bar" style="--v:81.29"><span>81.29</span></td></tr>
+          <tr class="ours"><td>全部</td><td>358 / 361</td><td class="bar" style="--v:44.32"><span>44.32</span></td></tr>
+        </tbody>
+      </table></div>
+      <div>
+        <div class="table-wrap tight"><table class="num">
+          <caption><b>全量评测</b>（AIS 作业 23495234）</caption>
+          <thead><tr><th class="l">权重 · 题集</th><th>已评分</th><th>满分</th><th>部分</th><th>零分</th><th>均分</th></tr></thead>
+          <tbody>
+            <tr class="ours"><td>OSWorld SFT · OSWorld 361</td><td>358</td><td>154</td><td>5</td><td>199</td><td>44.32</td></tr>
+            <tr><td>ScienceBoard SFT · 发布配置</td><td>146</td><td>17</td><td>14</td><td>115</td><td>16.24</td></tr>
+            <tr><td>ScienceBoard SFT · 恢复原题初态</td><td>148</td><td>18</td><td>12</td><td>118</td><td>16.06</td></tr>
+          </tbody>
+        </table></div>
+        <p class="table-note">3 道缺分按全零或全满计，361 题均分在 43.96–44.79 之间。</p>
+        <div class="table-wrap" style="margin-top:18px"><table class="num">
+          <caption><b>训练划分里的原题</b>（用来选 RL 题）</caption>
+          <thead><tr><th class="l">类别</th><th>原题</th><th>均分</th><th>零分</th><th>零分且 ≥ 50 步</th></tr></thead>
+          <tbody>
+            <tr><td>全部</td><td>293 / 295</td><td>40.85</td><td>173</td><td>109</td></tr>
+            <tr class="ours"><td>跨应用</td><td>77 / 77</td><td class="lo">10.39</td><td>69</td><td class="lo">62</td></tr>
+            <tr><td>Calc</td><td>37 / 37</td><td>37.84</td><td>23</td><td>11</td></tr>
+            <tr><td>Impress</td><td>37 / 37</td><td>45.68</td><td>20</td><td>8</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h3>RL Bench</h3>
+    <p class="text center-text">OSWorld 成功率（%）。参考行取自 SCALE-CUA 论文表 2；我们的 SFT 按论文的五类重新汇总。</p>
+    <div class="table-wrap"><table class="num">
+      <thead><tr><th class="l">模型</th><th>步数</th><th>OS</th><th>Office</th><th>Daily</th><th>Professional</th><th>Workflow</th><th>Overall</th></tr></thead>
+      <tbody>
+        <tr class="cat"><td colspan="8">参考 · SCALE-CUA 论文表 2</td></tr>
+        <tr class="dim"><td>Human</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>72.4</td></tr>
+        <tr><td>Kimi K2.5</td><td>100</td><td>73.9</td><td>69.2</td><td>66.4</td><td>73.5</td><td>46.1</td><td>63.3</td></tr>
+        <tr><td>Claude Sonnet 4.5</td><td>100</td><td>70.8</td><td><b>72.6</b></td><td>61.4</td><td>63.2</td><td><b>49.5</b></td><td>62.9</td></tr>
+        <tr><td>Seed-1.8</td><td>100</td><td>66.7</td><td>68.8</td><td>67.1</td><td>71.4</td><td>42.4</td><td>61.9</td></tr>
+        <tr><td>EvoCUA-32B</td><td>50</td><td>78.3</td><td>59.8</td><td>64.5</td><td>81.6</td><td>27.9</td><td>56.7</td></tr>
+        <tr><td>UI-TARS-2</td><td>100</td><td>41.7</td><td>61.1</td><td>62.1</td><td>61.2</td><td>34.1</td><td>53.1</td></tr>
+        <tr><td>ComputerRL-9B</td><td>50</td><td>75.0</td><td>45.8</td><td>52.5</td><td>71.4</td><td>27.9</td><td>48.0</td></tr>
+        <tr><td>OpenCUA-72B</td><td>50</td><td>45.8</td><td>42.7</td><td>53.8</td><td>75.5</td><td>22.3</td><td>44.9</td></tr>
+        <tr><td>DART-GUI-7B</td><td>30</td><td>62.5</td><td>39.3</td><td>50.8</td><td>73.5</td><td>16.7</td><td>42.1</td></tr>
+        <tr class="dim"><td>Qwen3-VL-8B-Thinking（基座）</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>–</td><td>33.9</td></tr>
+        <tr class="cat"><td colspan="8">ScaleCUA · 论文报告（4 次 rollout 平均）</td></tr>
+        <tr><td>ScaleCUA-Qwen3-VL-8B</td><td>50</td><td><b>83.3</b></td><td>68.4</td><td><b>79.4</b></td><td>81.6</td><td>45.2</td><td>67.7</td></tr>
+        <tr><td>ScaleCUA-Qwen3.5-9B</td><td>50</td><td>79.2</td><td>70.6</td><td>74.3</td><td><b>89.5</b></td><td>48.1</td><td><b>68.7</b></td></tr>
+        <tr class="cat"><td colspan="8">我们 · 同一个 SFT 起点，我们的环境</td></tr>
+        <tr class="ours"><td>ScaleCUA Qwen3-VL-8B SFT</td><td>50</td><td>66.7</td><td>48.6</td><td>59.5</td><td>52.1</td><td class="lo">16.3</td><td>44.3</td></tr>
+        <tr class="dim"><td>论文 RL（8B）− 我们的 SFT</td><td></td><td>+16.6</td><td>+19.8</td><td>+19.9</td><td>+29.5</td><td>+28.9</td><td>+23.4</td></tr>
+        <tr><td>官方发布的 RL 权重（我们评测）</td><td>50</td><td colspan="6" class="pend">已下载，待评测</td></tr>
+        <tr><td>SFT + 原版 GRPO（256 题，25 步）</td><td>50</td><td colspan="6" class="pend">待训练</td></tr>
+        <tr><td>SFT + 我们的改动</td><td>50</td><td colspan="6" class="pend">待训练</td></tr>
+      </tbody>
+    </table></div>
+    <p class="table-note">Office = Calc + Impress + Writer；Daily = Chrome + VLC + Thunderbird；Professional = GIMP + VS Code；Workflow = 跨应用。“差距”一行跨了两种评测协议，只用来看哪一类缺口大。</p>
+
+    <div class="hbars" aria-label="OSWorld 总分对比">
+      <div class="hb human"><span>Human</span><i style="--v:72.4"></i><em>72.4</em></div>
+      <div class="hb paper"><span>ScaleCUA-Qwen3.5-9B</span><i style="--v:68.7"></i><em>68.7</em></div>
+      <div class="hb paper"><span>ScaleCUA-Qwen3-VL-8B</span><i style="--v:67.7"></i><em>67.7</em></div>
+      <div class="hb"><span>Kimi K2.5</span><i style="--v:63.3"></i><em>63.3</em></div>
+      <div class="hb"><span>Claude Sonnet 4.5</span><i style="--v:62.9"></i><em>62.9</em></div>
+      <div class="hb"><span>Seed-1.8</span><i style="--v:61.9"></i><em>61.9</em></div>
+      <div class="hb"><span>EvoCUA-32B</span><i style="--v:56.7"></i><em>56.7</em></div>
+      <div class="hb"><span>UI-TARS-2</span><i style="--v:53.1"></i><em>53.1</em></div>
+      <div class="hb"><span>ComputerRL-9B</span><i style="--v:48.0"></i><em>48.0</em></div>
+      <div class="hb"><span>OpenCUA-72B</span><i style="--v:44.9"></i><em>44.9</em></div>
+      <div class="hb ours"><span>我们的 SFT 起点（8B）</span><i style="--v:44.32"></i><em>44.3</em></div>
+      <div class="hb"><span>DART-GUI-7B</span><i style="--v:42.1"></i><em>42.1</em></div>
+      <div class="hb"><span>Qwen3-VL-8B-Thinking</span><i style="--v:33.9"></i><em>33.9</em></div>
+      <div class="hb-axis"><span></span><div><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div><span></span></div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:36px"><table class="num">
+      <caption><b>小算力参考：同一组 117 道 OSWorld LibreOffice 题</b></caption>
+      <thead><tr><th class="l">模型</th><th>Calc（47）</th><th>Impress（47）</th><th>Writer（23）</th><th>117 题</th></tr></thead>
+      <tbody>
+        <tr><td>CUA-Lite Qwen3.5-4B · SFT</td><td>–</td><td>–</td><td>–</td><td>32.8</td></tr>
+        <tr><td>CUA-Lite Qwen3.5-4B · SFT + GRPO</td><td>–</td><td>–</td><td>–</td><td>38.6</td></tr>
+        <tr class="ours"><td>我们的 SFT 起点（8B）</td><td>38.3</td><td>50.9</td><td>65.2</td><td>48.6</td></tr>
+      </tbody>
+    </table></div>
+    <p class="table-note">模型、分辨率和 harness 不同，不比高低。我们的起点在办公题上已经不低，提升空间主要在 Calc 和跨应用题。</p>
+  </div>
+</section>
+
+<!-- ============ CONCEPTS ============ -->
+<section class="sec wrap" id="concepts">
+  <h2>概念图解</h2>
+  <p class="text center-text">后文反复用到的八个概念，每个一张图。</p>
+  <div class="cgrid">
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="rollout：截图给模型，模型出动作，循环最多 50 轮，评分器读最终文件给 0 到 1 分">
+        <rect x="8" y="28" width="66" height="46" rx="5" fill="#fff" stroke="#9aa6bb" stroke-width="1.5"/><rect x="14" y="34" width="54" height="5" rx="2" fill="#d5d9e1"/><path d="M14 48h54M14 57h54M14 66h54M32 42v28M50 42v28" stroke="#e3e6ec"/>
+        <rect x="104" y="34" width="54" height="34" rx="7" fill="#141a29"/><text x="131" y="56" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">模型</text>
+        <path d="M76 40H100" stroke="#7a8295" stroke-width="1.5" marker-end="url(#ar)"/><text x="88" y="32" text-anchor="middle" font-size="11" fill="#7a8295">截图</text>
+        <path d="M102 62H80" stroke="#7a8295" stroke-width="1.5" marker-end="url(#ar)"/><text x="90" y="80" text-anchor="middle" font-size="11" fill="#7a8295">动作</text>
+        <text x="41" y="94" text-anchor="middle" font-size="11.5" fill="#4b5468">最多 50 轮</text>
+        <path d="M160 51H178" stroke="#7a8295" stroke-width="1.5" marker-end="url(#ar)"/>
+        <path d="M184 30h17l7 7v29h-24z" fill="#fff" stroke="#9aa6bb" stroke-width="1.5"/><path d="M201 30v7h7M188 46h16M188 53h16M188 60h10" fill="none" stroke="#c5ccd8"/>
+        <text x="196" y="22" text-anchor="middle" font-size="11" fill="#7a8295">评分器读文件</text>
+        <rect x="172" y="76" width="50" height="22" rx="11" fill="#fdf4e2"/><text x="197" y="91" text-anchor="middle" font-size="12.5" fill="#a8490a" font-weight="600">0–1 分</text>
+      </svg>
+      <h5><span class="n">1</span>rollout 与评分器</h5><p>看截图、出动作，循环到结束；评分器读最终文件给分。</p>
+    </figure>
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="GRPO：同一题 8 次的得分减去组均值得到优势，高于均值的柱子向上，低于的向下">
+        <text x="8" y="16" font-size="11.5" fill="#7a8295">同一题做 8 次的得分</text>
+        <circle cx="24" cy="32" r="8" fill="#1a9850"/><circle cx="51" cy="32" r="8" fill="#d62020"/><circle cx="78" cy="32" r="8" fill="#f0a30a"/><circle cx="105" cy="32" r="8" fill="#1a9850"/><circle cx="132" cy="32" r="8" fill="#d62020"/><circle cx="159" cy="32" r="8" fill="#d62020"/><circle cx="186" cy="32" r="8" fill="#1a9850"/><circle cx="213" cy="32" r="8" fill="#f0a30a"/>
+        <path d="M10 80H230" stroke="#7a8295" stroke-dasharray="4 3"/><text x="230" y="96" text-anchor="end" font-size="11" fill="#7a8295">均值</text>
+        <rect x="17" y="58" width="14" height="22" fill="#1a9850"/><rect x="44" y="80" width="14" height="22" fill="#d62020"/><rect x="71" y="78" width="14" height="4" fill="#9aa6bb"/><rect x="98" y="58" width="14" height="22" fill="#1a9850"/><rect x="125" y="80" width="14" height="22" fill="#d62020"/><rect x="152" y="80" width="14" height="22" fill="#d62020"/><rect x="179" y="58" width="14" height="22" fill="#1a9850"/><rect x="206" y="78" width="14" height="4" fill="#9aa6bb"/>
+        <text x="8" y="122" font-size="11.5" fill="#4b5468">柱子 = 优势：高于均值鼓励，低于抑制</text>
+      </svg>
+      <h5><span class="n">2</span>GRPO 组内优势</h5><p>每次得分减去组均值。8 次同分，优势全为 0，没有信号。</p>
+    </figure>
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="原版每一步共用一个优势，全部是同一种红色；希望信号落在找对页面和没保存这两步">
+        <text x="8" y="16" font-size="11.5" fill="#7a8295">原版：每一步共用一个优势</text>
+        <g fill="#d62020" opacity=".5"><rect x="8" y="24" width="16" height="20" rx="3"/><rect x="27" y="24" width="16" height="20" rx="3"/><rect x="46" y="24" width="16" height="20" rx="3"/><rect x="65" y="24" width="16" height="20" rx="3"/><rect x="84" y="24" width="16" height="20" rx="3"/><rect x="103" y="24" width="16" height="20" rx="3"/><rect x="122" y="24" width="16" height="20" rx="3"/><rect x="141" y="24" width="16" height="20" rx="3"/><rect x="160" y="24" width="16" height="20" rx="3"/><rect x="179" y="24" width="16" height="20" rx="3"/><rect x="198" y="24" width="16" height="20" rx="3"/><rect x="217" y="24" width="16" height="20" rx="3"/></g>
+        <text x="8" y="66" font-size="11.5" fill="#7a8295">希望：落到关键的几步</text>
+        <g fill="#d5d9e1"><rect x="8" y="74" width="16" height="20" rx="3"/><rect x="27" y="74" width="16" height="20" rx="3"/><rect x="46" y="74" width="16" height="20" rx="3"/><rect x="84" y="74" width="16" height="20" rx="3"/><rect x="103" y="74" width="16" height="20" rx="3"/><rect x="122" y="74" width="16" height="20" rx="3"/><rect x="141" y="74" width="16" height="20" rx="3"/><rect x="160" y="74" width="16" height="20" rx="3"/><rect x="179" y="74" width="16" height="20" rx="3"/><rect x="198" y="74" width="16" height="20" rx="3"/></g>
+        <rect x="65" y="74" width="16" height="20" rx="3" fill="#1a9850"/><rect x="217" y="74" width="16" height="20" rx="3" fill="#d62020"/>
+        <text x="73" y="112" text-anchor="middle" font-size="11" fill="#1a9850">找对页面</text><text x="233" y="112" text-anchor="end" font-size="11" fill="#d62020">没保存</text>
+      </svg>
+      <h5><span class="n">3</span>功劳分配</h5><p>原版把一次尝试的分数平均记在每一步头上。</p>
+    </figure>
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="Frontier 抽题权重：成功率一半时最高，全对或全错时很低">
+        <text x="24" y="14" font-size="11" fill="#7a8295">抽中权重</text>
+        <path d="M24 92.9L34 87.8L44 81.2L54 73.2L64 64.1L74 54.2L84 44.5L94 35.5L104 28.3L114 23.6L124 22L134 23.6L144 28.3L154 35.5L164 44.5L174 54.2L184 64.1L194 73.2L204 81.2L214 87.8L224 92.9V104H24Z" fill="#eef4fc"/>
+        <path d="M24 92.9L34 87.8L44 81.2L54 73.2L64 64.1L74 54.2L84 44.5L94 35.5L104 28.3L114 23.6L124 22L134 23.6L144 28.3L154 35.5L164 44.5L174 54.2L184 64.1L194 73.2L204 81.2L214 87.8L224 92.9" fill="none" stroke="#2a78d6" stroke-width="2.2"/>
+        <path d="M24 104H224" stroke="#9aa6bb"/>
+        <circle cx="124" cy="22" r="3.5" fill="#2a78d6"/><circle cx="24" cy="92.9" r="3" fill="#d62020"/><circle cx="224" cy="92.9" r="3" fill="#d62020"/>
+        <g font-size="11" fill="#7a8295"><text x="24" y="120">全错</text><text x="124" y="120" text-anchor="middle">一半对</text><text x="224" y="120" text-anchor="end">全对</text></g>
+      </svg>
+      <h5><span class="n">4</span>Frontier Sampling</h5><p>按最近成功率抽题：一半对的题最常被抽，另留 20% 随机。</p>
+    </figure>
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="视觉分段：第一段带 10 张截图；第二段前 5 轮只留文字，后 10 轮带截图">
+        <text x="4" y="40" font-size="11.5" fill="#141a29" font-weight="600">段 1</text><text x="4" y="80" font-size="11.5" fill="#141a29" font-weight="600">段 2</text>
+        <g fill="#2a78d6"><rect x="36" y="28" width="11" height="16" rx="2"/><rect x="49" y="28" width="11" height="16" rx="2"/><rect x="62" y="28" width="11" height="16" rx="2"/><rect x="75" y="28" width="11" height="16" rx="2"/><rect x="88" y="28" width="11" height="16" rx="2"/><rect x="101" y="28" width="11" height="16" rx="2"/><rect x="114" y="28" width="11" height="16" rx="2"/><rect x="127" y="28" width="11" height="16" rx="2"/><rect x="140" y="28" width="11" height="16" rx="2"/><rect x="153" y="28" width="11" height="16" rx="2"/>
+        <rect x="101" y="68" width="11" height="16" rx="2"/><rect x="114" y="68" width="11" height="16" rx="2"/><rect x="127" y="68" width="11" height="16" rx="2"/><rect x="140" y="68" width="11" height="16" rx="2"/><rect x="153" y="68" width="11" height="16" rx="2"/><rect x="166" y="68" width="11" height="16" rx="2"/><rect x="179" y="68" width="11" height="16" rx="2"/><rect x="192" y="68" width="11" height="16" rx="2"/><rect x="205" y="68" width="11" height="16" rx="2"/><rect x="218" y="68" width="11" height="16" rx="2"/></g>
+        <g fill="#fff" stroke="#7a8295" stroke-dasharray="2 2"><rect x="36" y="68" width="11" height="16" rx="2"/><rect x="49" y="68" width="11" height="16" rx="2"/><rect x="62" y="68" width="11" height="16" rx="2"/><rect x="75" y="68" width="11" height="16" rx="2"/><rect x="88" y="68" width="11" height="16" rx="2"/></g>
+        <text x="4" y="108" font-size="11.5" fill="#4b5468">攒满 10 张存一段，丢掉最旧 5 张</text><text x="4" y="124" font-size="11" fill="#7a8295">虚线格：只留文字记录</text>
+      </svg>
+      <h5><span class="n">5</span>视觉分段</h5><p>一条 50 轮的轨迹切成几段训练，每段最多 10 张截图。</p>
+    </figure>
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="critic 估计的预计得分曲线：找对页面时跳升，没保存时跌到 0">
+        <text x="16" y="14" font-size="11" fill="#7a8295">V(s)：从这一步继续的预计得分</text>
+        <path d="M16 100H228" stroke="#c5ccd8"/>
+        <path d="M16 76L68.8 74L77.6 44L183.2 38L218.4 38L227.2 96" fill="none" stroke="#2a78d6" stroke-width="2.2"/>
+        <circle cx="77.6" cy="44" r="4" fill="#1a9850"/><text x="86" y="32" font-size="11" fill="#1a9850">找对页面：跳升</text>
+        <circle cx="227.2" cy="96" r="4" fill="#d62020"/><text x="220" y="118" text-anchor="end" font-size="11" fill="#d62020">没保存：跌到 0</text>
+        <text x="16" y="118" font-size="11" fill="#7a8295">第 1 步</text>
+      </svg>
+      <h5><span class="n">6</span>critic（价值模型）</h5><p>估计从这里继续能得几分。曲线在哪一步跳，功劳就记在哪一步。</p>
+    </figure>
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="真实续跑：从存下的状态跑三次，得 1、0.5、0，平均 0.5">
+        <circle cx="40" cy="64" r="15" fill="#f0a30a"/><rect x="31" y="58" width="18" height="12" rx="2" fill="none" stroke="#fff" stroke-width="1.6"/><circle cx="40" cy="64" r="3.2" fill="none" stroke="#fff" stroke-width="1.6"/>
+        <text x="40" y="96" text-anchor="middle" font-size="11.5" fill="#4b5468">状态 s</text><text x="40" y="111" text-anchor="middle" font-size="11" fill="#7a8295">存成快照</text>
+        <path d="M56 64C90 64 90 24 126 24H148M56 64H148M56 64C90 64 90 104 126 104H148" fill="none" stroke="#f0a30a" stroke-width="2"/>
+        <rect x="150" y="14" width="36" height="20" rx="10" fill="#e8f5ee"/><text x="168" y="28" text-anchor="middle" font-size="12" font-weight="600" fill="#1a9850">1</text>
+        <rect x="150" y="54" width="36" height="20" rx="10" fill="#fdf4e2"/><text x="168" y="68" text-anchor="middle" font-size="12" font-weight="600" fill="#a8490a">0.5</text>
+        <rect x="150" y="94" width="36" height="20" rx="10" fill="#fdeaea"/><text x="168" y="108" text-anchor="middle" font-size="12" font-weight="600" fill="#d62020">0</text>
+        <path d="M192 24h6v80h-6" fill="none" stroke="#9aa6bb"/>
+        <text x="219" y="58" text-anchor="middle" font-size="11" fill="#7a8295">平均</text><text x="219" y="76" text-anchor="middle" font-size="15" font-weight="600" fill="#1b5fb3">0.5</text>
+      </svg>
+      <h5><span class="n">7</span>快照与真实续跑</h5><p>从同一处跑 K 次，平均分就是这一处价值的实测值，可以拿来校正 critic。</p>
+    </figure>
+    <figure class="cfig">
+      <svg viewBox="0 0 240 130" role="img" aria-label="评分器三查：未操作应得 0，正确产物应得 1，关键字段写错应低于 1">
+        <rect x="14" y="8" width="40" height="20" rx="10" fill="#fdeaea"/><text x="34" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#d62020">0</text>
+        <rect x="94" y="8" width="40" height="20" rx="10" fill="#e8f5ee"/><text x="114" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#1a9850">1</text>
+        <rect x="174" y="8" width="40" height="20" rx="10" fill="#fdf4e2"/><text x="194" y="22" text-anchor="middle" font-size="12" font-weight="600" fill="#a8490a">&lt; 1</text>
+        <g fill="#fff" stroke="#9aa6bb" stroke-width="1.5"><path d="M20 36h20l8 8v28H20z"/><path d="M100 36h20l8 8v28h-28z"/><path d="M180 36h20l8 8v28h-28z"/></g>
+        <g fill="none" stroke="#c5ccd8"><path d="M40 36v8h8M120 36v8h8M200 36v8h8"/><path d="M104 52h18M104 58h18M104 64h12"/><path d="M184 52h18M184 64h12"/></g>
+        <path d="M184 58h18" stroke="#d62020" stroke-width="2"/>
+        <g font-size="11.5" fill="#141a29" text-anchor="middle"><text x="34" y="92">未操作</text><text x="114" y="92">正确产物</text><text x="194" y="92">关键字段错</text></g>
+        <g font-size="11" fill="#7a8295" text-anchor="middle"><text x="34" y="108">应得 0</text><text x="114" y="108">应得 1</text><text x="194" y="108">应低于 1</text></g>
+      </svg>
+      <h5><span class="n">8</span>评分器三查</h5><p>三条都过，这道题的分数才可信，才能进训练集。</p>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ SCALE-CUA ============ -->
+<section class="sec wrap" id="scalecua">
+  <span class="tag">THUDM · arXiv 2607.11185</span>
+  <h2>SCALE-CUA 拆解</h2>
+  <p class="text center-text">我们要复现的原版。① 和 ② 造题，③ 训练；我们直接用官方 SFT 和 2,049 道公开题，从 ③ 开始。</p>
+
+  <figure class="fig">
+    <div class="scroller"><svg class="fsvg" viewBox="0 0 1000 360" role="img" aria-label="SCALE-CUA 三段流程：VeriGen 造题，预热与轨迹引导合成，在线 RL">
+      <g fill="#f3f4f7"><rect x="0" y="0" width="316" height="352" rx="12"/><rect x="342" y="0" width="316" height="352" rx="12"/><rect x="684" y="0" width="316" height="352" rx="12"/></g>
+      <g class="se" font-size="19" font-weight="500" fill="#141a29"><text x="20" y="34">① VeriGen 造题</text><text x="362" y="34">② 预热 + 轨迹引导合成</text><text x="704" y="34">③ 在线 RL</text></g>
+      <g fill="#fff" stroke="#d5d9e1"><rect x="20" y="52" width="262" height="58" rx="8"/><rect x="20" y="120" width="262" height="58" rx="8"/><rect x="20" y="188" width="262" height="58" rx="8"/></g>
+      <g font-size="14" fill="#4b5468">
+        <text x="34" y="76"><tspan font-weight="600" fill="#141a29">proposer</tspan> 写题和评分器</text><text x="34" y="98" font-size="12.5" fill="#7a8295">连着真实 docker 桌面写</text>
+        <text x="34" y="144"><tspan font-weight="600" fill="#141a29">judger</tspan> 静态审查</text><text x="34" y="166" font-size="12.5" fill="#7a8295">指令清楚吗？判分逻辑对吗？</text>
+        <text x="34" y="212"><tspan font-weight="600" fill="#141a29">checker</tspan> 在桌面里试做</text><text x="34" y="234" font-size="12.5" fill="#7a8295">做得到吗？评分器判得准吗？</text>
+      </g>
+      <path d="M282 217C304 217 304 81 284 81" fill="none" stroke="#7a8295" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      <g font-size="14" fill="#141a29"><text x="20" y="280">100+ 个 worker 并行：</text><text x="20" y="302"><tspan font-weight="600">24K+ 候选 → 约 3K 道 RL 题</tspan></text><text x="20" y="330" font-size="13" fill="#4b5468">评分器可执行率 94.5% · 人工一致率 82.5%</text></g>
+      <g fill="#fff" stroke="#d5d9e1"><rect x="362" y="52" width="276" height="54" rx="8"/><rect x="362" y="126" width="276" height="42" rx="8"/></g>
+      <text x="376" y="75" font-size="14" fill="#141a29" font-weight="600">基座模型先在初始题池上预热</text><text x="376" y="96" font-size="12.5" fill="#7a8295">论文称 supervised warm-up，未公开数据</text>
+      <path d="M500 106V122" stroke="#7a8295" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text x="376" y="152" font-size="14" fill="#141a29">当前模型在一部分题上 rollout</text>
+      <path d="M500 168C500 186 432 180 432 198M500 168C500 186 568 180 568 198" fill="none" stroke="#7a8295" stroke-width="1.5" marker-end="url(#ar)"/>
+      <rect x="362" y="200" width="134" height="78" rx="8" fill="#fdeaea" stroke="#f1b9b9"/><rect x="504" y="200" width="134" height="78" rx="8" fill="#e8f5ee" stroke="#b5dcc5"/>
+      <g font-size="13" fill="#4b5468" text-anchor="middle"><text x="429" y="222" font-weight="600" fill="#d62020">失败轨迹</text><text x="429" y="244">在最早偏离处</text><text x="429" y="264">拆成更简单的小题</text>
+      <text x="571" y="222" font-weight="600" fill="#1a9850">成功轨迹</text><text x="571" y="244">同应用相近目标</text><text x="571" y="264">合成更难的多目标题</text></g>
+      <text x="362" y="310" font-size="14" fill="#141a29">把这些题加进 RL 题池：</text><text x="362" y="332" font-size="14" fill="#141a29" font-weight="600">OSWorld 64.6 → 68.7</text>
+      <g fill="#fff" stroke="#d5d9e1"><rect x="704" y="50" width="276" height="38" rx="8"/><rect x="704" y="98" width="276" height="38" rx="8"/><rect x="704" y="146" width="276" height="38" rx="8"/><rect x="704" y="194" width="276" height="38" rx="8"/><rect x="704" y="242" width="276" height="38" rx="8" stroke="#2a78d6"/></g>
+      <g font-size="13.5" fill="#141a29"><text x="718" y="74">Frontier：多抽成功率≈50% 的题（图 4）</text><text x="718" y="122">每题 8 次 rollout，最多 50 轮（图 1）</text><text x="718" y="170">评分器读最终状态，给 0–1 分</text><text x="718" y="218">视觉分段：最近 5 张截图（图 5）</text><text x="718" y="266" fill="#1b5fb3" font-weight="600">GRPO 组内比较（图 2、3）</text></g>
+      <g stroke="#7a8295" stroke-width="1.5"><path d="M842 88V96"/><path d="M842 136V144"/><path d="M842 184V192"/><path d="M842 232V240"/></g>
+      <path d="M980 261C996 261 996 69 982 69" fill="none" stroke="#2a78d6" stroke-width="1.5" marker-end="url(#arb)"/>
+      <text x="704" y="310" font-size="14" fill="#141a29">ScaleCUA-Qwen3-VL-8B：</text><text x="704" y="332" font-size="14" fill="#141a29" font-weight="600">OSWorld 67.7 · ScienceBoard 51.9</text>
+      <g fill="#7a8295"><path d="M321 170l14 6-14 6z"/><path d="M663 170l14 6-14 6z"/></g>
+    </svg></div>
+  </figure>
+
+  <div class="minis">
+    <div>
+      <p class="mtitle">消融：去掉哪一块，OSWorld 掉多少 <small>（Qwen3.5-9B，论文表 4）</small></p>
+      <div class="mbars">
+        <div class="mb ours"><span>完整 ScaleCUA</span><i style="--v:68.7"></i><em>68.7</em></div>
+        <div class="mb"><span>不加轨迹合成的题</span><i style="--v:64.6"></i><em>64.6</em></div>
+        <div class="mb"><span>去掉 Frontier</span><i style="--v:63.7"></i><em>63.7</em></div>
+        <div class="mb"><span>去掉视觉分段</span><i style="--v:62.2"></i><em>62.2</em></div>
+        <div class="mb lo"><span>去掉 VeriGen（基座）</span><i style="--v:43.9"></i><em>43.9</em></div>
+      </div>
+    </div>
+    <div>
+      <p class="mtitle">VeriGen 造出的评分器能跑通的比例 <small>（%）</small></p>
+      <div class="mbars">
+        <div class="mb ours"><span>完整流程</span><i style="--v:94.5"></i><em>94.5</em></div>
+        <div class="mb"><span>去掉 Rule Validator</span><i style="--v:86.2"></i><em>86.2</em></div>
+        <div class="mb"><span>去掉 Fix Agent</span><i style="--v:78.1"></i><em>78.1</em></div>
+        <div class="mb lo"><span>去掉 LLM Judge</span><i style="--v:62.3"></i><em>62.3</em></div>
+        <div class="mb"><span>人工抽查一致率</span><i style="--v:78.0"></i><em>78.0</em></div>
+      </div>
+    </div>
+  </div>
+
+  <details class="more"><summary>原版训练设置，以及我们的配置和论文的差别</summary><div class="more-body">
+    <div class="table-wrap tight"><table class="num wide">
+      <thead><tr><th class="l">项目</th><th class="l">论文</th><th class="l">我们跑的官方配置</th></tr></thead>
+      <tbody>
+        <tr><td>每步题数 × 次数</td><td>32 题 × 8 次</td><td>16 题 × 8 次（qw3vl_train_std.yaml）</td></tr>
+        <tr><td>优化</td><td>GRPO + DAPO 不对称裁剪，KL 1e-4</td><td>同；学习率 3e-6，冻结视觉编码器</td></tr>
+        <tr><td>采样</td><td>温度 0.8，最多 50 轮</td><td>同；没做完的轨迹记 −0.2</td></tr>
+        <tr><td>截图历史</td><td>保留 5 张，攒到 10 张切段</td><td>images_to_keep = 5，min_removal_threshold = 5</td></tr>
+        <tr><td>动作</td><td>1000×1000 相对坐标</td><td>同；模型截图 1280×720，桌面 1920×1080</td></tr>
+        <tr><td>算力与环境</td><td>64 × H800；600 台虚拟机</td><td>8 × A100（2 卡推理 + 6 卡训练）；16–24 个桌面，TCG</td></tr>
+        <tr><td>agent</td><td>anthropic_rl（未公开）</td><td>官方发布的 ScaleCUAOSWorldAgent</td></tr>
+      </tbody>
+    </table></div>
+  </div></details>
+</section>
+
+<!-- ============ CUA-Lite ============ -->
+<section class="sec wrap" id="cualite">
+  <span class="tag">arXiv 2610.26071 · cua-lite</span>
+  <h2>CUA-Lite 拆解</h2>
+  <p class="text center-text">和我们算力最接近：每次 SFT 和 RL 都只用一个 8 × A100 节点。环境、数据格式、harness 三样东西统一，评测、SFT、RL 共用。</p>
+
+  <figure class="fig">
+    <div class="scroller"><svg class="fsvg" viewBox="0 0 1000 300" role="img" aria-label="CUA-Lite 流程：教师做题、验证器过滤、Lite.Sample、SFT、GRPO">
+      <rect x="0" y="0" width="1000" height="50" rx="10" fill="#eef4fc"/>
+      <text x="20" y="31" font-size="14.5" fill="#1b5fb3"><tspan font-weight="600">Lite.Gym</tspan>：所有环境一个接口（reset / step / close）· 12 个 benchmark · 30,000+ 道可验证任务</text>
+      <g fill="#fff" stroke="#d5d9e1"><rect x="0" y="80" width="176" height="128" rx="10"/><rect x="206" y="80" width="176" height="128" rx="10"/><rect x="412" y="80" width="176" height="128" rx="10"/><rect x="618" y="80" width="176" height="128" rx="10"/><rect x="824" y="80" width="176" height="128" rx="10" stroke="#2a78d6"/></g>
+      <g class="se" font-size="17" fill="#141a29"><text x="14" y="108">教师做题</text><text x="220" y="108">验证器过滤</text><text x="426" y="108">Lite.Sample</text><text x="632" y="108">SFT</text><text x="838" y="108" fill="#1b5fb3">GRPO</text></g>
+      <g font-size="13" fill="#4b5468">
+        <text x="14" y="134">GPT-5.5、Qwen3.5-27B、</text><text x="14" y="154">Qwen3.8-27B 在可验证</text><text x="14" y="174">环境里 rollout</text>
+        <text x="220" y="134">只留评分达标的轨迹</text><text x="220" y="154">去掉越界坐标和空动作</text>
+        <text x="426" y="134">统一的多轮监督格式</text><text x="426" y="154">也转换公开数据集</text>
+        <text x="632" y="134">学生 Qwen3.5-4B</text><text x="632" y="154">桌面 5,000 条轨迹</text>
+        <text x="838" y="134">814 道合成办公题</text><text x="838" y="154">16 题 × 8 次 · 20 步</text><text x="838" y="174">24 个 Docker 桌面</text>
+      </g>
+      <g fill="#7a8295"><path d="M182 138l14 6-14 6z"/><path d="M388 138l14 6-14 6z"/><path d="M594 138l14 6-14 6z"/><path d="M800 138l14 6-14 6z"/></g>
+      <rect x="0" y="236" width="1000" height="50" rx="10" fill="#f3f4f7"/>
+      <text x="20" y="267" font-size="14.5" fill="#4b5468"><tspan font-weight="600" fill="#141a29">每个模型一套 harness</tspan>：评测、SFT、RL 共用 · 只带 1 张最新截图 + 全部文字历史</text>
+    </svg></div>
+  </figure>
+
+  <div class="minis">
+    <div>
+      <p class="mtitle">各平台：SFT 前后与 RL 前后 <small>（Qwen3.5-4B；空心 = 之前，实心 = 之后）</small></p>
+      <div class="db">
+        <div class="dbr"><span>桌面 · SFT</span><div class="dbt" style="--a:22.6;--b:44.8"><b></b><i class="a"></i><i class="b"></i></div><em>22.6 → 44.8</em></div>
+        <div class="dbr rl"><span>桌面 · RL</span><div class="dbt" style="--a:32.8;--b:38.6"><b></b><i class="a"></i><i class="b"></i></div><em>32.8 → 38.6</em></div>
+        <div class="dbr"><span>浏览器 · SFT</span><div class="dbt" style="--a:4.4;--b:60"><b></b><i class="a"></i><i class="b"></i></div><em>4.4 → 60.0</em></div>
+        <div class="dbr rl"><span>浏览器 · RL</span><div class="dbt" style="--a:60;--b:72.8"><b></b><i class="a"></i><i class="b"></i></div><em>60.0 → 72.8</em></div>
+        <div class="dbr"><span>手机 · SFT</span><div class="dbt" style="--a:14.6;--b:26.8"><b></b><i class="a"></i><i class="b"></i></div><em>14.6 → 26.8</em></div>
+        <div class="dbr rl"><span>手机 · RL</span><div class="dbt" style="--a:34.6;--b:46.7"><b></b><i class="a"></i><i class="b"></i></div><em>34.6 → 46.7</em></div>
+      </div>
+      <p class="table-note" style="margin-left:0">SFT 和 RL 用的不是同一组题，两行不能连起来读。</p>
+    </div>
+    <div>
+      <p class="mtitle">一个桌面的开销 <small>（冷启动，秒）</small></p>
+      <div class="mbars">
+        <div class="mb"><span>Lite.OSWorld Docker</span><i style="--v:18.5"></i><em>21.3</em></div>
+        <div class="mb"><span>OSWorld QEMU/KVM</span><i style="--v:25.5"></i><em>29.3</em></div>
+        <div class="mb ours"><span>我们：TCG 冷启动 + setup</span><i style="--v:100"></i><em>115</em></div>
+        <div class="mb ours"><span>我们：完整快照恢复</span><i style="--v:8.7"></i><em>≈ 10</em></div>
+      </div>
+      <p class="mtitle" style="margin-top:16px">内存 <small>（GB）</small></p>
+      <div class="mbars">
+        <div class="mb"><span>Docker</span><i style="--v:15.8"></i><em>0.6</em></div>
+        <div class="mb"><span>QEMU/KVM</span><i style="--v:100"></i><em>3.8</em></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="step amber"><h5>负结果</h5><p>在官方 RL 题上练，留出集没涨：SFT 已学过这些题。换成新合成的办公题才涨。</p></div>
+    <div class="step"><h5>截图历史</h5><p>只带 1 张最新截图，和带 4 张差不多。</p></div>
+    <div class="step grey"><h5>限制</h5><p>训练验证器没全审；只覆盖 Linux；没测迁移到没见过的应用。</p></div>
+  </div>
+</section>
+
+<!-- ============ COMPARE ============ -->
+<section class="sec wrap" id="compare">
+  <h2>三方对照</h2>
+  <p class="text center-text">每一行按该行最大值画。</p>
+  <div class="cmp">
+    <div class="cmpr"><span>GPU</span><div class="cmpb"><div><i style="--v:100"></i><em>64 × H800</em></div><div><i style="--v:12.5"></i><em>8 × A100</em></div><div><i style="--v:12.5"></i><em>8 × A100</em></div></div></div>
+    <div class="cmpr"><span>并发桌面</span><div class="cmpb"><div><i style="--v:100"></i><em>600</em></div><div><i style="--v:4"></i><em>24</em></div><div><i style="--v:4"></i><em>16–24</em></div></div></div>
+    <div class="cmpr"><span>RL 题</span><div class="cmpb"><div><i style="--v:100"></i><em>≈ 3,000</em></div><div><i style="--v:27.1"></i><em>814</em></div><div><i style="--v:8.5"></i><em>256</em></div></div></div>
+    <div class="cmpr"><span>每步 rollout</span><div class="cmpb"><div><i style="--v:100"></i><em>32 × 8</em></div><div><i style="--v:50"></i><em>16 × 8</em></div><div><i style="--v:50"></i><em>16 × 8</em></div></div></div>
+    <div class="cmpr"><span>训练步数</span><div class="cmpb"><div><i style="--v:100"></i><em>≤ 1,000</em></div><div><i style="--v:2"></i><em>20</em></div><div><i style="--v:2.5"></i><em>25（首轮）</em></div></div></div>
+    <div class="cmpr"><span>截图历史</span><div class="cmpb"><div><i style="--v:100"></i><em>5 张</em></div><div><i style="--v:20"></i><em>1 张</em></div><div><i style="--v:100"></i><em>5 张</em></div></div></div>
+  </div>
+  <div class="cmp-legend"><span><i style="background:#9db0cf"></i>SCALE-CUA</span><span><i style="background:#c5ccd8"></i>CUA-Lite（桌面）</span><span><i style="background:var(--ours)"></i>我们</span></div>
+  <details class="more"><summary>文字版对照</summary><div class="more-body">
+    <div class="table-wrap tight"><table class="num wide">
+      <thead><tr><th class="l">项目</th><th class="l">SCALE-CUA</th><th class="l">CUA-Lite（桌面）</th><th class="l">我们</th></tr></thead>
+      <tbody>
+        <tr><td>起点</td><td>8–9B 基座预热后</td><td>Qwen3.5-4B，SFT 5,000 条</td><td>官方 ScaleCUA Qwen3-VL-8B OSWorld SFT</td></tr>
+        <tr><td>RL 题</td><td>VeriGen 24K+ 候选筛出约 3K</td><td>814 道按模板合成的办公题</td><td>从 1,691 道训练划分里定向筛 256 道</td></tr>
+        <tr><td>评分器</td><td>VeriGen 生成，OSWorld 人工一致率 78%</td><td>大多复用 OSWorld 评分函数，未全审</td><td>每题三查</td></tr>
+        <tr><td>算法</td><td>GRPO + DAPO 裁剪 + KL</td><td>GRPO，无 KL</td><td>先原版，再 PPO / Turn-PPO / GiGPO</td></tr>
+        <tr><td>结果</td><td>OSWorld 67.7（8B）</td><td>117 道办公题 32.8 → 38.6</td><td>SFT 44.32；RL 待训练</td></tr>
+      </tbody>
+    </table></div>
+  </div></details>
+</section>
+
+<!-- ============ DATA ============ -->
+<section class="sec wrap" id="data">
+  <h2>数据拆解</h2>
+  <p class="text center-text">我们不重做 SFT。这一节拆公开的 RL 题库，和我们从中筛 256 道训练题的过程。</p>
+
+  <div class="block" style="margin-top:32px">
+    <h3>公开 RL 题库：2,049 道变体，来自 359 道 OSWorld 原题</h3>
+    <div class="pair">
+      <div class="table-wrap tight"><table class="num">
+        <caption><b>按应用拆分</b>（变体数；研究划分按原题分组）</caption>
+        <thead><tr><th class="l">应用</th><th class="l">公开题库</th><th>训练</th><th>dev</th><th>test</th></tr></thead>
+        <tbody>
+          <tr><td>Calc</td><td class="bar" style="--v:32.8"><span>328</span></td><td>263</td><td>28</td><td>37</td></tr>
+          <tr><td>Chrome</td><td class="bar" style="--v:30.0"><span>300</span></td><td>251</td><td>27</td><td>22</td></tr>
+          <tr><td>Impress</td><td class="bar" style="--v:26.2"><span>262</span></td><td>209</td><td>25</td><td>28</td></tr>
+          <tr><td>OS</td><td class="bar" style="--v:20.1"><span>201</span></td><td>176</td><td>19</td><td>6</td></tr>
+          <tr><td>Writer</td><td class="bar" style="--v:19.3"><span>193</span></td><td>153</td><td>21</td><td>19</td></tr>
+          <tr><td>GIMP</td><td class="bar" style="--v:18.8"><span>188</span></td><td>152</td><td>14</td><td>22</td></tr>
+          <tr><td>VS Code</td><td class="bar" style="--v:16.5"><span>165</span></td><td>141</td><td>13</td><td>11</td></tr>
+          <tr class="ours"><td>跨应用</td><td class="bar lo" style="--v:14.8"><span>148</span></td><td>126</td><td>11</td><td>11</td></tr>
+          <tr><td>Thunderbird</td><td class="bar" style="--v:13.2"><span>132</span></td><td>116</td><td>8</td><td>8</td></tr>
+          <tr><td>VLC</td><td class="bar" style="--v:13.2"><span>132</span></td><td>104</td><td>15</td><td>13</td></tr>
+          <tr><td>合计</td><td class="bar" style="--v:0"><span>2,049</span></td><td>1,691</td><td>181</td><td>177</td></tr>
+        </tbody>
+      </table></div>
+      <div>
+        <p class="mtitle">跨应用题的占比 <small>（%）</small></p>
+        <div class="mbars">
+          <div class="mb"><span>OSWorld 评测里</span><i style="--v:25.8"></i><em>25.8</em></div>
+          <div class="mb lo"><span>公开 RL 题库里</span><i style="--v:7.2"></i><em>7.2</em></div>
+        </div>
+        <p class="table-note" style="margin-left:0">最弱的一类，训练题反而最少。</p>
+        <div class="stats three" style="margin-top:22px;grid-template-columns:1fr">
+          <div class="stat"><p class="stat-what">原题全部在 OSWorld 361 里</p><p class="stat-num">359<small> / 359</small></p><p class="stat-label">官方 361 不是没见过的题，留出用 dev 181 / test 177。</p></div>
+          <div class="stat amber"><p class="stat-what">零分原题的变体，SFT 4/4 全对</p><p class="stat-num">7<small> / 33</small></p><p class="stat-label">变体容易，不代表原题的难点被练到了。</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h3>筛 256 道训练题</h3>
+    <div class="chev">
+      <div><b>1,691</b>训练划分</div>
+      <div><b>−126</b>重复、留出同指令、评分器有问题</div>
+      <div><b>三查</b>未操作 0 · 正确 1 · 错例 &lt; 1</div>
+      <div><b>×4</b>初态 0 分后，SFT 试做 4 次</div>
+      <div class="am"><b>逐题严核</b>失分操作、评分字段</div>
+      <div class="hl"><b>144</b>入选（11-27 16:28）</div>
+    </div>
+    <div class="pair">
+      <div>
+        <div class="table-wrap tight"><table class="num">
+          <caption><b>三类配额的进度</b></caption>
+          <thead><tr><th class="l">类别</th><th class="l">已严核 / 配额</th></tr></thead>
+          <tbody>
+            <tr><td>主练：保留原题失分的关键操作</td><td class="bar lo" style="--v:29.7"><span>38 / 128</span></td></tr>
+            <tr><td>分步：单练一个可验证环节</td><td class="bar" style="--v:98.4"><span>63 / 64</span></td></tr>
+            <tr><td>广覆盖：防止别的能力退化</td><td class="bar" style="--v:67.2"><span>43 / 64</span></td></tr>
+            <tr class="ours"><td>合计</td><td class="bar" style="--v:56.3"><span>144 / 256</span></td></tr>
+          </tbody>
+        </table></div>
+        <p class="table-note" style="margin-left:0">主练还差约 90 道，11 月 28 日的 screen-main 作业专门补这一类。</p>
+      </div>
+      <div>
+        <p class="mtitle">训练划分 1,691 道题的去向 <small>（全池筛选清单，11 月 27 日）</small></p>
+        <div class="stackbar">
+          <i style="flex:1151;background:#9aa6bb">已筛过 1,151</i><i style="flex:414;background:var(--ours)">剩余 414</i><i style="flex:126;background:var(--no)">126</i>
+        </div>
+        <div class="stackbar" style="margin-top:12px">
+          <i style="flex:400;background:#9aa6bb">剩余里原题 SFT 已满分 400</i><i style="flex:14;background:var(--amber)"></i>
+        </div>
+        <p class="table-note" style="margin-left:0">剩下的 414 道几乎都是 SFT 已会的题，补不了主练。</p>
+      </div>
+    </div>
+    <div class="pair">
+      <div class="table-wrap tight"><table class="num wide">
+        <caption><b>入选的例子</b></caption>
+        <thead><tr><th class="l">题</th><th class="l">为什么留</th></tr></thead>
+        <tbody>
+          <tr><td>按等级表回填三名学生成绩</td><td>四次填对 3、2、0、1 行，能区分完成程度</td></tr>
+          <tr><td>用工时和费率算工资再扣税</td><td>四次中三次满分；原题 SFT 零分</td></tr>
+          <tr><td>冻结首行和前两列，再改表名</td><td>只做对一半都得 0.5</td></tr>
+        </tbody>
+      </table></div>
+      <div class="table-wrap tight"><table class="num wide">
+        <caption><b>因为评分器被排除的例子</b></caption>
+        <thead><tr><th class="l">题</th><th class="l">评分器的问题</th></tr></thead>
+        <tbody>
+          <tr><td>姓名合并（5,000 行）</td><td>只交前 5 行就满分</td></tr>
+          <tr><td>四道计数题</td><td>答案扩大十倍仍满分</td></tr>
+          <tr><td>清理 notebook</td><td>按指令做反而 0 分</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RL PROCESS ============ -->
+<section class="sec wrap" id="rl">
+  <h2>RL 过程拆解</h2>
+  <p class="text center-text">一次 GRPO 更新的八步。上排是采样（2 张卡推理 + 桌面），下排是训练（6 张卡）。</p>
+  <figure class="fig">
+    <div class="scroller"><svg class="fsvg" viewBox="0 0 1000 290" role="img" aria-label="一次 RL 更新的八步：选题、取桌面、rollout、判分、视觉分段、组内优势、更新、同步权重">
+      <text x="0" y="16" font-size="13" fill="#1b5fb3" font-weight="600">采样 · 2 张卡跑 vLLM + 16–24 个桌面</text>
+      <text x="0" y="286" font-size="13" fill="#6b4fc7" font-weight="600">训练 · 6 张卡跑 actor + reference</text>
+      <g fill="#eef4fc" stroke="#b9d0ef"><rect x="0" y="28" width="226" height="96" rx="10"/><rect x="258" y="28" width="226" height="96" rx="10"/><rect x="516" y="28" width="226" height="96" rx="10"/><rect x="774" y="28" width="226" height="96" rx="10"/></g>
+      <g fill="#f1edfb" stroke="#cfc3f1"><rect x="774" y="164" width="226" height="96" rx="10"/><rect x="516" y="164" width="226" height="96" rx="10"/><rect x="258" y="164" width="226" height="96" rx="10"/><rect x="0" y="164" width="226" height="96" rx="10"/></g>
+      <g class="se" font-size="17" fill="#141a29">
+        <text x="14" y="56">① 选题</text><text x="272" y="56">② 取桌面</text><text x="530" y="56">③ rollout</text><text x="788" y="56">④ 判分</text>
+        <text x="788" y="192">⑤ 视觉分段</text><text x="530" y="192">⑥ 组内优势</text><text x="272" y="192">⑦ 更新 actor</text><text x="14" y="192">⑧ 同步权重</text>
+      </g>
+      <g font-size="13.5" fill="#4b5468">
+        <text x="14" y="82">Frontier 抽 16 题</text><text x="14" y="104">每题复制 8 份</text>
+        <text x="272" y="82">快照恢复 ≈ 10 s</text><text x="272" y="104">冷启动 + setup 115 s</text>
+        <text x="530" y="82">截图 → 模型 → 动作</text><text x="530" y="104">≤ 50 轮，平均每条 443 s</text>
+        <text x="788" y="82">读文件或系统状态</text><text x="788" y="104">0–1 分，没做完 −0.2</text>
+        <text x="788" y="218">留最近 5 张截图</text><text x="788" y="240">一条轨迹切成几段</text>
+        <text x="530" y="218">8 条一组比较</text><text x="530" y="240">同一条的段共用</text>
+        <text x="272" y="218">GRPO + KL 1e-4</text><text x="272" y="240">lr 3e-6，冻结 ViT</text>
+        <text x="14" y="218">新权重推给 vLLM</text><text x="14" y="240">采样可能略滞后</text>
+      </g>
+      <g stroke="#7a8295" stroke-width="1.5" fill="none" marker-end="url(#ar)"><path d="M228 76H254"/><path d="M486 76H512"/><path d="M744 76H770"/><path d="M887 126V160"/><path d="M772 212H746"/><path d="M514 212H488"/><path d="M256 212H230"/><path d="M113 162V128"/></g>
+    </svg></div>
+  </figure>
+  <div style="max-width:820px;margin:28px auto 0">
+    <p class="mtitle">一次真实更新的时间 <small>（6 卡在线 smoke，4 条轨迹，共 1,276 s，按比例画）</small></p>
+    <div class="stackbar" style="height:34px"><i style="flex:1226;background:var(--ours)">采样与环境 1,226 s · 96%</i><i style="flex:18.6;background:#9b86e0"></i><i style="flex:31;background:#6b4fc7"></i></div>
+    <div class="legend"><span><i style="background:var(--ours)"></i>采样与环境（含推理）</span><span><i style="background:#9b86e0"></i>reference 18.6 s</span><span><i style="background:#6b4fc7"></i>actor 31.0 s</span></div>
+  </div>
+  <details class="more"><summary>基建：我们在原版之外补了什么</summary><div class="more-body">
+    <ul class="dots">
+      <li><b>桌面</b>：没有 KVM，用 TCG；同镜像 warm pool + 完整快照恢复，144 次恢复验收通过。</li>
+      <li><b>监督</b>：guard → watchdog → persistent_job 三层，监督进程丢了也不会重复拉起训练。</li>
+      <li><b>评分</b>：读来宾文件中断时重试，重试耗尽记为未评分，不当 0 分。</li>
+      <li><b>agent</b>：上游的 anthropic_rl 未公开，用官方 ScaleCUAOSWorldAgent 代替。</li>
+      <li><b>Lite.ScaleCUA</b>：CUA-Lite 的容器桌面读的是同一批 2,049 道题，文件哈希已核对一致；先拿 16 道代表题做等价检查，通过的题才用它采样。</li>
+    </ul>
+  </div></details>
+</section>
+
+<!-- ============ CASE ============ -->
+<section class="sec wrap" id="case">
+  <h2>Case：同一道题，两种结局</h2>
+  <p class="text center-text">来自 11 月 27 日的筛题作业 23593010。同样的指令，两次试跑，分数不同。点阶段或下方时间轴上的圆点切换画面。</p>
+  <div class="case" id="casePlayer">
+    <div class="tabs" role="tablist" aria-label="选择任务">
+      <button class="tab" role="tab" type="button" data-case="0" aria-selected="true">MP3 标签 · 四次 0 / 0 / 0 / 1</button>
+      <button class="tab" role="tab" type="button" data-case="1" aria-selected="false">Thunderbird 过滤规则 · 四次 0 / 0.66 / 1 / 1</button>
+    </div>
+    <p class="case-goal" id="caseGoal"></p>
+    <div class="stages" id="caseStages"></div>
+    <div class="case-grid">
+      <figure class="case-run" id="caseRun0"><h4></h4><div class="shot"><img alt=""></div><figcaption></figcaption><div class="ribbon"></div><p class="verdict"></p></figure>
+      <figure class="case-run" id="caseRun1"><h4></h4><div class="shot"><img alt=""></div><figcaption></figcaption><div class="ribbon"></div><p class="verdict"></p></figure>
+    </div>
+    <p class="case-note" id="caseNote"></p>
+    <div class="case-links"><a class="btn" href="case/2026-11-27/screen-trace-replay.html" target="_blank" rel="noopener">完整逐步回放：4 条轨迹，177 步</a></div>
+  </div>
+  <div class="steps two" style="margin-top:34px">
+    <div class="step amber"><h5>MP3：一个真实的岔路口</h5><p>两次在“选择工具”分开：成功的一次用 Python 写标签并读回；失败的一次去装 Kid3，后 30 多步都在等安装。</p></div>
+    <div class="step"><h5>Thunderbird：界面和评分器看的不是一个东西</h5><p>末帧显示规则已启用，评分器只认规则文件里的 discount，给了 0.66。要查清是写盘时机还是规则内容。</p></div>
+  </div>
+</section>
+
+<!-- ============ SCHEDULE ============ -->
+<section class="sec wrap" id="schedule">
+  <h2>RL 排班表</h2>
+  <p class="text center-text">AIS 上的 8 × A100。先看卡怎么分，再看跑过什么、接下来跑什么。</p>
+
+  <p class="rowlabel">筛题和评测：每张卡一个冻结的 SFT 服务 + 2 个桌面</p>
+  <div class="gpus">
+    <div class="gpu"><b>GPU 0</b>SFT 服务<div class="d"><i></i><i></i></div></div><div class="gpu"><b>GPU 1</b>SFT 服务<div class="d"><i></i><i></i></div></div><div class="gpu"><b>GPU 2</b>SFT 服务<div class="d"><i></i><i></i></div></div><div class="gpu"><b>GPU 3</b>SFT 服务<div class="d"><i></i><i></i></div></div>
+    <div class="gpu"><b>GPU 4</b>SFT 服务<div class="d"><i></i><i></i></div></div><div class="gpu"><b>GPU 5</b>SFT 服务<div class="d"><i></i><i></i></div></div><div class="gpu"><b>GPU 6</b>SFT 服务<div class="d"><i></i><i></i></div></div><div class="gpu"><b>GPU 7</b>SFT 服务<div class="d"><i></i><i></i></div></div>
+  </div>
+  <p class="rowlabel">RL 训练：2 张卡推理 + 6 张卡训练；桌面 16 个，并发测试通过后加到 24 个（浅色方块）</p>
+  <div class="gpus">
+    <div class="gpu ro"><b>GPU 0</b>vLLM rollout<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div><div class="gpu ro"><b>GPU 1</b>vLLM rollout<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div>
+    <div class="gpu tr"><b>GPU 2</b>actor / ref<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div><div class="gpu tr"><b>GPU 3</b>actor / ref<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div><div class="gpu tr"><b>GPU 4</b>actor / ref<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div><div class="gpu tr"><b>GPU 5</b>actor / ref<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div><div class="gpu tr"><b>GPU 6</b>actor / ref<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div><div class="gpu tr"><b>GPU 7</b>actor / ref<div class="d"><i></i><i></i><i style="opacity:.35"></i></div></div>
+  </div>
+
+  <h4>接下来的实验顺序（11 月 27 日定）</h4>
+  <div class="chev steps7">
+    <div><b>0 并发对比</b><small>16 vs 24 桌面，同 16 题 × 8 次</small></div>
+    <div class="hl"><b>1 原版 GRPO</b><small>25 步，基线</small></div>
+    <div><b>2 PPO</b><small>加 critic，按 token</small></div>
+    <div><b>3 Turn-PPO</b><small>按一轮操作</small></div>
+    <div><b>4 GiGPO</b><small>同状态比较，不训 critic</small></div>
+    <div class="am"><b>5 续跑校正 critic</b><small>我们的改动</small></div>
+    <div><b>6 TA-GRPO</b><small>段内时间加权</small></div>
+  </div>
+
+  <div class="minis">
+    <div>
+      <p class="mtitle">原版 GRPO 一轮要多久 <small>（单方法、单种子、25 次更新；小时）</small></p>
+      <div class="db">
+        <div class="dbr"><span>16 个桌面</span><div class="dbt" style="--a:60;--b:80"><b></b><i class="a"></i><i class="b"></i></div><em>36–48 h</em></div>
+        <div class="dbr rl"><span>24 个桌面</span><div class="dbt" style="--a:50;--b:66.7"><b></b><i class="a"></i><i class="b"></i></div><em>30–40 h</em></div>
+      </div>
+      <div class="hb-axis" style="grid-template-columns:118px minmax(0,1fr) 96px;gap:10px;margin-top:4px"><span></span><div><span>0</span><span>20</span><span>40</span><span>60 h</span></div><span></span></div>
+      <p class="table-note" style="margin-left:0">24 路还没有完整训练实测；排队和最终评测另算。</p>
+    </div>
+    <div>
+      <p class="mtitle">已经跑过的作业</p>
+      <div class="sched" style="margin-top:0">
+        <div class="slot"><div class="when">11-20</div><div><span class="chip done">完成</span></div><div class="what"><p>环境验收；6 卡在线 GRPO 一次非零梯度更新</p></div></div>
+        <div class="slot"><div class="when">23495234</div><div><span class="chip done">完成</span></div><div class="what"><p>SFT 全量评测（看板上的基线）</p></div></div>
+        <div class="slot"><div class="when">23524450</div><div><span class="chip queue">停在更新前</span></div><div class="what"><p>原版 GRPO pilot：84 分钟 158 条评分，转去筛题</p></div></div>
+        <div class="slot"><div class="when">11-25 → 26</div><div><span class="chip done">完成</span></div><div class="what"><p>首批 48 题 + 过夜 426 题 + 三轮扩围，严核到 87</p></div></div>
+        <div class="slot"><div class="when">11-27</div><div><span class="chip done">完成</span></div><div class="what"><p>主练扩围（23587884 / 23593010）：严核到 144；上面两个 case 来自这里</p></div></div>
+        <div class="slot"><div class="when">11-28</div><div><span class="chip run">下一个</span></div><div class="what"><p>screen-main：接 23604025 的正式题单，补主练难题</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INSIGHT ============ -->
+<section class="sec wrap" id="insight">
+  <h2>RL Insight</h2>
+  <p class="text center-text">到目前为止能确定的八件事。</p>
+  <div class="ana-grid">
+    <div class="ana">
+      <div class="viz"><div class="stackbar"><i style="flex:1226;background:var(--ours)">采样与环境</i><i style="flex:18.6;background:#9b86e0"></i><i style="flex:31;background:#6b4fc7"></i></div><span class="vizl">一次更新 1,276 s；训练只占约 50 s</span></div>
+      <h5><span class="big">96%</span>时间在采样和环境上</h5>
+      <p class="so"><b>对我们：</b>省桌面时间比优化训练更值钱。</p>
+    </div>
+    <div class="ana">
+      <div class="viz"><div class="stackbar"><i style="flex:176;background:var(--ours)">有分差 176</i><i style="flex:218;background:#c5ccd8;color:var(--ink-2)">四次同分 218</i></div><span class="vizl">394 道有四次有效评分的题</span></div>
+      <h5><span class="big">55%</span>的组没有训练信号</h5>
+      <p class="so"><b>对我们：</b>盯住“零方差组比例”；乘在零优势上的改动都无效。</p>
+    </div>
+    <div class="ana">
+      <div class="viz"><div class="dots32" id="dots32"></div><span class="vizl">首批审计 32 道，红点 = 给关键错例满分</span></div>
+      <h5><span class="big am">17 / 32</span>评分器会给错例满分</h5>
+      <p class="so"><b>对我们：</b>一道题进训练集前先过三查。</p>
+    </div>
+    <div class="ana">
+      <div class="viz"><div class="stackbar"><i style="flex:400;background:#9aa6bb">原题 SFT 已满分 400</i><i style="flex:14;background:var(--amber)"></i></div><span class="vizl">全池筛选剩下的 414 道候选</span></div>
+      <h5><span class="big am">400 / 414</span>剩下的题 SFT 基本都会</h5>
+      <p class="so"><b>对我们：</b>CUA-Lite 在已学过的题上练没涨；主练题要围绕失分操作挑。</p>
+    </div>
+    <div class="ana">
+      <div class="viz"><div class="mbars"><div class="mb"><span>OSWorld 评测里</span><i style="--v:25.8"></i><em>25.8%</em></div><div class="mb lo"><span>公开 RL 题库里</span><i style="--v:7.2"></i><em>7.2%</em></div></div></div>
+      <h5><span class="big">7.2%</span>最弱的跨应用题，训练题最少</h5>
+      <p class="so"><b>对我们：</b>“定向 256 对分层 256”的对照测的就是这件事。</p>
+    </div>
+    <div class="ana">
+      <div class="viz"><div class="mbars"><div class="mb"><span>冷启动 + setup</span><i style="--v:100"></i><em>115 s</em></div><div class="mb ours"><span>完整快照恢复</span><i style="--v:8.7"></i><em>≈ 10 s</em></div></div></div>
+      <h5><span class="big">10×</span>快照让重置桌面快一个数量级</h5>
+      <p class="so"><b>对我们：</b>能否从任务中途恢复，决定续跑方案做不做得成。</p>
+    </div>
+    <div class="ana">
+      <div class="viz"><div class="mbars"><div class="mb"><span>保留 5 张截图</span><i style="--v:87.5"></i><em>7 / 8</em></div><div class="mb lo"><span>保留 1 张截图</span><i style="--v:1"></i><em>0 / 8</em></div></div><span class="vizl">SCALE-CUA 的一个案例；CUA-Lite 却发现 1 张和 4 张差不多</span></div>
+      <h5><span class="big">5 vs 1</span>截图历史没有定论</h5>
+      <p class="so"><b>对我们：</b>原版先保持 5 张，必要时在我们的协议下单测。</p>
+    </div>
+    <div class="ana">
+      <div class="viz"><svg viewBox="0 0 400 56" style="width:100%;height:56px" role="img" aria-label="长轨迹切成 5 段，在组内统计里占 5 份；短轨迹只占 1 份">
+        <g fill="#9fb7dd"><rect x="0" y="6" width="56" height="16" rx="3"/><rect x="60" y="6" width="56" height="16" rx="3"/><rect x="120" y="6" width="56" height="16" rx="3"/><rect x="180" y="6" width="56" height="16" rx="3"/><rect x="240" y="6" width="56" height="16" rx="3"/></g>
+        <text x="306" y="19" font-size="13" fill="#1b5fb3" font-weight="600">长轨迹 × 5 份</text>
+        <rect x="0" y="34" width="56" height="16" rx="3" fill="#c5ccd8"/><text x="66" y="47" font-size="13" fill="#4b5468">短轨迹 × 1 份</text>
+      </svg></div>
+      <h5><span class="big">× 段数</span>长轨迹在组内统计里占更多份</h5>
+      <p class="so"><b>对我们：</b>改优势计算的实验，要把这一效应单独控制住。</p>
+    </div>
+  </div>
+  <div class="take"><span>暴论</span><p>桌面 RL 最贵的是桌面。443 秒换回一个数，再把这个数平均摊给几十步，等于把最贵的东西用得最粗。</p></div>
+</section>
+
+<!-- ============ NEXT ============ -->
+<section class="sec wrap" id="next">
+  <span class="tag amber">排在原版之后 · 未开工</span>
+  <h2>下一步：信号怎么分到每一步</h2>
+  <p class="text center-text">同一条失败轨迹（第 4 轮找对页面，第 12 轮没保存），各方法给每一轮的信号。</p>
+  <figure class="fig">
+    <div class="scroller"><svg class="fsvg" id="creditMap" viewBox="0 0 1000 430" role="img" aria-label="六种方法给同一条 12 轮轨迹的信号：GRPO 全部相同；PPO 按 token；Turn-PPO 按轮；GiGPO 在同状态处比较；续跑校正 critic 在部分轮次加真实续跑；TA-GRPO 按段"></svg></div>
+    <figcaption><b>示意。</b>绿色鼓励、红色抑制，深浅表示大小。橙色框是 GiGPO 找到的“同状态组”；橙色扇形是从该处做的真实续跑。</figcaption>
+  </figure>
+
+  <div class="table-wrap"><table class="num matrix">
+    <thead><tr><th class="l">方法</th><th>训练 critic</th><th>信号单位</th><th>比较相同中间状态</th><th>真实续跑</th><th>排期</th></tr></thead>
+    <tbody>
+      <tr><td>GRPO（原版）</td><td class="n">–</td><td>整条轨迹</td><td class="n">–</td><td class="n">–</td><td class="c">1</td></tr>
+      <tr><td>PPO</td><td class="y">✓</td><td>token</td><td class="n">–</td><td class="n">–</td><td class="c">2</td></tr>
+      <tr><td>Turn-PPO</td><td class="y">✓</td><td>一轮操作</td><td class="n">–</td><td class="n">–</td><td class="c">3</td></tr>
+      <tr><td>GiGPO</td><td class="n">–</td><td>整条 + 同状态的一步</td><td class="y">✓</td><td class="n">–</td><td class="c">4</td></tr>
+      <tr class="mine"><td>Turn-PPO + 续跑校正 critic</td><td class="y">✓</td><td>一轮操作</td><td class="c">同一处续跑</td><td class="y">✓ 随机选点 → FOCUS 选点</td><td class="c">5</td></tr>
+      <tr><td>TA-GRPO</td><td class="n">–</td><td>段</td><td class="c">同段号</td><td class="n">–</td><td class="c">6</td></tr>
+    </tbody>
+  </table></div>
+
+  <figure class="fig">
+    <div class="scroller"><svg class="fsvg" viewBox="0 0 1000 250" role="img" aria-label="续跑校正 critic：前 12 步共享，第 13 步保存快照，同一策略续跑三次，得分 1、0.5、0，平均值作为 critic 的训练目标">
+      <path d="M30 116v-10h420v10" fill="none" stroke="#7a8295" stroke-width="1.2"/>
+      <text x="240" y="96" font-size="13.5" fill="#4b5468" text-anchor="middle">共享前缀：同一份桌面，同一段操作历史</text>
+      <path d="M50 150H480" stroke="#7a8295" stroke-width="3" stroke-linecap="round"/>
+      <g fill="#fff" stroke="#9aa6bb" stroke-width="1.5"><rect x="30" y="136" width="40" height="28" rx="5"/><rect x="92" y="136" width="40" height="28" rx="5"/><rect x="154" y="136" width="40" height="28" rx="5"/><rect x="216" y="136" width="40" height="28" rx="5"/><rect x="278" y="136" width="40" height="28" rx="5"/><rect x="340" y="136" width="40" height="28" rx="5"/><rect x="402" y="136" width="40" height="28" rx="5"/></g>
+      <path d="M494 150C534 150 532 64 576 64H760M494 150H760M494 150C534 150 532 236 576 236H760" fill="none" stroke="#f0a30a" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="482" cy="150" r="13" fill="#f0a30a"/>
+      <text x="494" y="190" font-size="13.5" fill="#a8490a" font-weight="600" text-anchor="end">存快照的状态 s</text><text x="494" y="208" font-size="12.5" fill="#7a8295" text-anchor="end">critic 预测 V(s) = ?</text>
+      <g fill="#fff" stroke="#9aa6bb" stroke-width="1.5"><rect x="586" y="51" width="36" height="26" rx="5"/><rect x="644" y="51" width="36" height="26" rx="5"/><rect x="586" y="137" width="36" height="26" rx="5"/><rect x="644" y="137" width="36" height="26" rx="5"/><rect x="586" y="223" width="36" height="26" rx="5"/><rect x="644" y="223" width="36" height="26" rx="5"/></g>
+      <g font-size="13" fill="#4b5468"><text x="586" y="42">续跑 1</text><text x="586" y="128">续跑 2</text><text x="586" y="214">续跑 3</text></g>
+      <g font-size="13.5" font-weight="600"><rect x="770" y="48" width="70" height="32" rx="16" fill="#e8f5ee"/><text x="805" y="69" text-anchor="middle" fill="#1a9850">1</text><rect x="770" y="134" width="70" height="32" rx="16" fill="#fdf4e2"/><text x="805" y="155" text-anchor="middle" fill="#a8490a">0.5</text><rect x="770" y="220" width="70" height="32" rx="16" fill="#fdeaea"/><text x="805" y="241" text-anchor="middle" fill="#d62020">0</text></g>
+      <path d="M852 64h10v172h-10" fill="none" stroke="#9aa6bb" stroke-width="1.5"/>
+      <text x="930" y="140" text-anchor="middle" font-size="13" fill="#4b5468">平均 0.5</text><text x="930" y="162" text-anchor="middle" font-size="13" fill="#1b5fb3" font-weight="600">= V(s) 的目标</text>
+    </svg></div>
+    <figcaption><b>我们的改动（示意）。</b>冻结采样策略，在随机选的少量状态各续跑 2–4 次，用平均终局分校正 critic；先和原版 Turn-PPO 比，再让 FOCUS 按“能减少多少估值误差”选位置，和随机选点同预算对照。思路来自 VinePPO（数学推理里恢复文本前缀即可续写），桌面还要恢复未保存的文档和应用状态。</figcaption>
+  </figure>
+  <p class="table-note" style="text-align:center">所有对照计入全部 GUI 操作、重试、恢复耗时和 GPU 小时；评测统一用 pass@1，即每道题只做一次。</p>
+</section>
+
+<!-- ============ REFS ============ -->
+<section class="sec wrap" id="refs">
+  <h2>参考</h2>
+  <ul class="refs">
+    <li><a href="https://arxiv.org/html/2607.11185" target="_blank" rel="noopener">SCALE-CUA</a>我们复现的原版。</li>
+    <li><a href="https://arxiv.org/html/2610.26071v1" target="_blank" rel="noopener">CUA-Lite</a>单节点 8 × A100 的 CUA 平台。</li>
+    <li><a href="https://github.com/xlang-ai/OSWorld" target="_blank" rel="noopener">OSWorld</a>评测基准与评分器。</li>
+    <li><a href="https://aclanthology.org/2026.findings-eacl.328/" target="_blank" rel="noopener">Turn-PPO</a>按轮更新的 PPO。</li>
+    <li><a href="https://github.com/langfengQ/verl-agent" target="_blank" rel="noopener">GiGPO</a>在相同中间状态上比较动作，不训 critic。</li>
+    <li><a href="https://arxiv.org/abs/2410.01679" target="_blank" rel="noopener">VinePPO</a>用真实续跑估计中间状态的价值。</li>
+    <li><a href="https://arxiv.org/abs/2610.35801" target="_blank" rel="noopener">FOCUS</a>按能减少的估值误差选择分支位置。</li>
+    <li><a href="https://arxiv.org/html/2611.18397v1#S4" target="_blank" rel="noopener">Gamer（TA-GRPO）</a>按段比较、段内靠后加权。</li>
+  </ul>
+</section>
+
+</main>
+
+<footer class="foot wrap">
+  <p>RL for CUA-Agent · 内部路线预演。我们的数字来自 CUA-RL 仓库的 README、docs/ 和 case/，进度截至 2026-11-27 16:28；论文数字取自各自的正文和附录。</p>
+</footer>
+</body>
+</html>

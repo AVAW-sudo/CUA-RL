@@ -1,0 +1,59 @@
+// 浏览器检查：脚本与资源无错误、Case 切换、信号分配图、回放子页、手机不横向溢出。
+// 运行：先在仓库根目录 `python3 -m http.server 8000 --bind 127.0.0.1 --directory site/dist`，再 `node site/authoring/qa/check-site.cjs`。
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { join } = require('node:path');
+const { tmpdir } = require('node:os');
+const { mkdtempSync } = require('node:fs');
+const assert = require('node:assert/strict');
+const preview = process.env.CUA_SITE_PREVIEW_URL || 'http://127.0.0.1:8000';
+const shots = mkdtempSync(join(tmpdir(), 'cua-site-'));
+
+(async () => {
+  const browser = await chromium.launch({executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']});
+  try {
+    const page = await browser.newPage({viewport: {width: 1440, height: 1000}, reducedMotion: 'reduce'});
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('response', r => { if (r.status() >= 400) errors.push(r.status() + ' ' + r.url()); });
+    await page.goto(preview, {waitUntil: 'networkidle'});
+
+    for (const id of ['bench', 'concepts', 'scalecua', 'cualite', 'compare', 'data', 'rl', 'case', 'schedule', 'insight', 'next'])
+      assert(await page.locator('#' + id).count(), 'missing section #' + id);
+    assert.equal(await page.locator('.cfig').count(), 8, 'concept figures');
+    assert(await page.locator('#creditMap rect').count() > 100, 'credit map not drawn');
+    assert.equal(await page.locator('#dots32 i.r').count(), 17);
+
+    // Case：默认 MP3 的“选择工具”阶段，切到 Thunderbird 再切阶段
+    const img0 = page.locator('#caseRun0 img');
+    assert.match(await img0.getAttribute('src'), /mp3-r0-s1\.webp$/);
+    assert.match(await page.locator('#caseRun0 h4').innerText(), /第 32 \/ 46 步/);
+    await page.locator('.tab[data-case="1"]').click();
+    assert.match(await img0.getAttribute('src'), /tb-r0-s3\.webp$/);
+    assert.match(await page.locator('#caseRun1 h4').innerText(), /0\.66 分/);
+    await page.locator('#caseStages .stage').nth(1).click();
+    assert.match(await page.locator('#caseRun1 img').getAttribute('src'), /tb-r1-s1\.webp$/);
+    await page.locator('#caseRun0 .ribbon .mk').first().click();
+    assert.match(await img0.getAttribute('src'), /tb-r0-s0\.webp$/);
+    assert(await img0.evaluate(el => el.complete && el.naturalWidth > 0), 'case frame did not load');
+    await page.locator('#case').screenshot({path: join(shots, 'case.jpg'), type: 'jpeg', quality: 82});
+
+    // 回放子页
+    const replay = await browser.newPage({viewport: {width: 1280, height: 900}});
+    replay.on('pageerror', e => errors.push('replay: ' + e.message));
+    await replay.goto(preview + '/case/2026-11-27/screen-trace-replay.html', {waitUntil: 'load'});
+    assert.match(await replay.locator('#number').innerText(), /^1 \/ \d+$/);
+    await replay.locator('#next').click();
+    assert.match(await replay.locator('#number').innerText(), /^2 \//);
+    await replay.close();
+
+    // 手机
+    await page.setViewportSize({width: 393, height: 852});
+    await page.goto(preview, {waitUntil: 'networkidle'});
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'horizontal overflow on phone');
+    await page.screenshot({path: join(shots, 'phone.jpg'), type: 'jpeg', quality: 80});
+
+    assert.deepEqual(errors, []);
+    console.log('通过：11 个章节、8 张概念图、信号分配图、Case 切换、回放子页、手机宽度、资源加载。截图在', shots);
+  } finally { await browser.close(); }
+})().catch(e => { console.error(e); process.exit(1); });
